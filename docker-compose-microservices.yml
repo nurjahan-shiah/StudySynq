@@ -1,0 +1,316 @@
+version: '3.8'
+
+services:
+  # ========================================================================
+  # DATA TIER
+  # ========================================================================
+  
+  db:
+    image: postgres:16
+    container_name: studysync-db
+    environment:
+      POSTGRES_DB: studysync
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - studysync-network
+
+  # ========================================================================
+  # API GATEWAY (Port 8000 - Single Entry Point)
+  # ========================================================================
+  
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: studysync-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth-service
+      - users-service
+      - groups-service
+      - sessions-service
+      - resources-service
+      - courses-service
+      - admin-service
+      - recommendations-service
+    environment:
+      LOG_LEVEL: info
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # ========================================================================
+  # MICROSERVICES (Ports 8001-8008)
+  # ========================================================================
+  
+  # Auth Service (Port 8001)
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: studysync-auth
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8001
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Users Service (Port 8002)
+  users-service:
+    build:
+      context: ./services/users-service
+      dockerfile: Dockerfile
+    container_name: studysync-users
+    ports:
+      - "8002:8002"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8002
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Groups Service (Port 8003)
+  groups-service:
+    build:
+      context: ./services/groups-service
+      dockerfile: Dockerfile
+    container_name: studysync-groups
+    ports:
+      - "8003:8003"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8003
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Sessions Service (Port 8004)
+  sessions-service:
+    build:
+      context: ./services/sessions-service
+      dockerfile: Dockerfile
+    container_name: studysync-sessions
+    ports:
+      - "8004:8004"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8004
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Resources Service (Port 8005)
+  resources-service:
+    build:
+      context: ./services/resources-service
+      dockerfile: Dockerfile
+    container_name: studysync-resources
+    ports:
+      - "8005:8005"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8005
+    volumes:
+      - ./shared:/shared:ro
+      - resources_data:/data/resources
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Courses Service (Port 8006)
+  courses-service:
+    build:
+      context: ./services/courses-service
+      dockerfile: Dockerfile
+    container_name: studysync-courses
+    ports:
+      - "8006:8006"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8006
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Admin Service (Port 8007)
+  admin-service:
+    build:
+      context: ./services/admin-service
+      dockerfile: Dockerfile
+    container_name: studysync-admin
+    ports:
+      - "8007:8007"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8007
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Recommendations Service (Port 8008)
+  recommendations-service:
+    build:
+      context: ./services/recommendations-service
+      dockerfile: Dockerfile
+    container_name: studysync-recommendations
+    ports:
+      - "8008:8008"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8008
+      DELTA_LAKE_PATH: /data/delta-lake
+    volumes:
+      - ./shared:/shared:ro
+      - delta_lake_data:/data/delta-lake
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # ========================================================================
+  # FRONTEND
+  # ========================================================================
+  
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: studysync-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: development
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # ========================================================================
+  # ETL & DATA PROCESSING JOBS
+  # ========================================================================
+  
+  etl:
+    build:
+      context: ./datalake
+      dockerfile: Dockerfile.etl
+    container_name: studysync-etl
+    command: python3 -u etl_pipeline.py
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      DELTA_LAKE_PATH: /data/delta-lake
+    volumes:
+      - delta_lake_data:/data/delta-lake
+    networks:
+      - studysync-network
+    restart: "no"
+
+  recommender:
+    build:
+      context: ./datalake
+      dockerfile: Dockerfile.etl
+    container_name: studysync-recommender
+    command: python recommender.py
+    depends_on:
+      db:
+        condition: service_healthy
+      etl:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      DELTA_LAKE_PATH: /data/delta-lake
+    volumes:
+      - delta_lake_data:/data/delta-lake
+    networks:
+      - studysync-network
+    restart: "no"
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+
+networks:
+  studysync-network:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+
+volumes:
+  pgdata:
+    driver: local
+  delta_lake_data:
+    driver: local
+  resources_data:
+    driver: local
