@@ -7,16 +7,43 @@ Defines the contract between services and clients.
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 # ============================================================================
 # Auth Schemas
 # ============================================================================
 
+VALID_SIGNUP_ROLES = {"student", "group_leader", "admin"}
+
 class UserRegister(BaseModel):
     name: str
     email: EmailStr
     password: str
+    role: str = "student"  # student | group_leader | admin
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        """Enforce: 8+ chars, uppercase, lowercase, digit."""
+        errors = []
+        if len(v) < 8:
+            errors.append("at least 8 characters")
+        if not any(c.isupper() for c in v):
+            errors.append("an uppercase letter")
+        if not any(c.islower() for c in v):
+            errors.append("a lowercase letter")
+        if not any(c.isdigit() for c in v):
+            errors.append("a number")
+        if errors:
+            raise ValueError("Password must contain: " + ", ".join(errors))
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in VALID_SIGNUP_ROLES:
+            raise ValueError(f"Role must be one of: {', '.join(VALID_SIGNUP_ROLES)}")
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -27,6 +54,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user_id: UUID
     user_email: str
+    user_role: str = "student"
+    is_first_login: bool = False
 
 # ============================================================================
 # User Schemas
