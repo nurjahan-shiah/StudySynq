@@ -158,13 +158,15 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8005
+      SUPABASE_URL: https://kodfszmzawzydyusebjt.supabase.co
+      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
     volumes:
       - ./shared:/shared:ro
       - resources_data:/data/resources
     networks:
       - studysync-network
     restart: unless-stopped
-
+    
   # Courses Service (Port 8006)
   courses-service:
     build:
@@ -314,3 +316,11 @@ volumes:
     driver: local
   resources_data:
     driver: local
+
+# ============================================================================
+# SUPABASE
+# ============================================================================
+
+#environment:
+#SUPABASE_URL=https://kodfszmzawzydyusebjt.supabase.co
+#SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78

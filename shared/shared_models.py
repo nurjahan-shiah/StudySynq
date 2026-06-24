@@ -47,6 +47,7 @@ class User(Base):
     sessions_created = relationship("StudySession", back_populates="creator", foreign_keys="StudySession.created_by")
     resources_uploaded = relationship("Resource", back_populates="uploader")
     recommendations = relationship("Recommendation", back_populates="user")
+    rsvps = relationship("SessionRSVP", back_populates="user")
 
 class Course(Base):
     __tablename__ = "courses"
@@ -85,6 +86,7 @@ class StudySession(Base):
     group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
     title = Column(String(255), nullable=False)
     scheduled_at = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, nullable=False, default=60)
     location = Column(String(255))
     description = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -93,6 +95,7 @@ class StudySession(Base):
     # Relationships
     group = relationship("Group", back_populates="sessions")
     creator = relationship("User", back_populates="sessions_created", foreign_keys=[created_by])
+    rsvps = relationship("SessionRSVP", back_populates="session")
 
 class Resource(Base):
     __tablename__ = "resources"
@@ -157,6 +160,26 @@ class UserEnrollment(Base):
     # Relationships
     user = relationship("User", back_populates="enrollments")
     course = relationship("Course", back_populates="user_enrollments")
+
+class SessionRSVPStatus(str, enum.Enum):
+    ATTENDING = "attending"
+    NOT_ATTENDING = "not_attending"
+    MAYBE = "maybe"
+
+class SessionRSVP(Base):
+    __tablename__ = "session_rsvps"
+    __table_args__ = (
+        UniqueConstraint('session_id', 'user_id', name='unique_session_user_rsvp'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("study_sessions.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(Enum(SessionRSVPStatus), nullable=False, default=SessionRSVPStatus.ATTENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("StudySession", back_populates="rsvps")
+    user = relationship("User", back_populates="rsvps")
 
 class Recommendation(Base):
     __tablename__ = "recommendations"

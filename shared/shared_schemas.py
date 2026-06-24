@@ -17,6 +17,7 @@ class UserRegister(BaseModel):
     name: str
     email: EmailStr
     password: str
+    role: str = "student"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -130,6 +131,22 @@ class StudySessionResponse(StudySessionBase):
 
     class Config:
         from_attributes = True
+
+class SessionRSVPCreate(BaseModel):
+    status: str = "attending"
+
+class SessionRSVPResponse(BaseModel):
+    id: UUID
+    session_id: UUID
+    user_id: UUID
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class StudySessionDetailResponse(StudySessionResponse):
+    attendees: List[SessionRSVPResponse] = []
 
 # ============================================================================
 # Resource Schemas

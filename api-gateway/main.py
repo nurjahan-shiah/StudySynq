@@ -17,7 +17,7 @@ Service URLs (internal to Docker network):
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 
 # ============================================================================
@@ -203,11 +203,14 @@ async def gateway(path: str, request: Request):
         body=body
     )
     
-    # Return response to client
-    return JSONResponse(
+    # Return response to client — proxy bytes directly to avoid re-serialization errors
+    excluded_headers = {"transfer-encoding", "content-encoding", "content-length"}
+    headers = {k: v for k, v in response["headers"].items() if k.lower() not in excluded_headers}
+    return Response(
         status_code=response["status_code"],
         content=response["content"],
-        headers=response["headers"]
+        media_type=response["headers"].get("content-type", "application/json"),
+        headers=headers,
     )
 
 # ============================================================================
