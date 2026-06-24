@@ -84,6 +84,7 @@ class StudySession(Base):
     group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False)
     title = Column(String(255), nullable=False)
     scheduled_at = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, nullable=False, default=60)
     location = Column(String(255))
     description = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
