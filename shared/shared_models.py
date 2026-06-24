@@ -19,6 +19,7 @@ Base = declarative_base()
 
 class UserRole(str, enum.Enum):
     STUDENT = "student"
+    GROUP_LEADER = "group_leader"
     ADMIN = "admin"
 
 class GroupMembershipRole(str, enum.Enum):
@@ -36,7 +37,7 @@ class User(Base):
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.STUDENT)
+    role = Column(Enum(UserRole, native_enum=False), default=UserRole.STUDENT)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

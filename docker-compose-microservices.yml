@@ -303,3 +303,14 @@ networks:
   studysync-network:
     driver: bridge
 
+# ============================================================================
+# VOLUMES
+# ============================================================================
+
+volumes:
+  pgdata:
+    driver: local
+  delta_lake_data:
+    driver: local
+  resources_data:
+    driver: local

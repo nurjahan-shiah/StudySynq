@@ -1,26 +1,171 @@
 @import "tailwindcss";
 
+/* ─── StudySync Theme Tokens ──────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ss-red:    #D63031;
+  --ss-blue:   #0984E3;
+  --ss-green:  #00B894;
+  --ss-yellow: #FDCB6E;
+
+  /* light mode defaults */
+  --bg:         #F7F7F7;
+  --bg2:        #FFFFFF;
+  --bg3:        #EFEFEF;
+  --border:     rgba(0, 0, 0, 0.09);
+  --text:       #111111;
+  --text2:      #666666;
+  --card-bg:    #FFFFFF;
+  --input-bg:   #FFFFFF;
+  --input-text: #000000;
+  --nav-blur:   rgba(247, 247, 247, 0.88);
+  --shadow:     0 8px 40px rgba(0, 0, 0, 0.10);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+[data-theme="dark"] {
+  --bg:         #0D0D0D;
+  --bg2:        #161616;
+  --bg3:        #1E1E1E;
+  --border:     rgba(255, 255, 255, 0.08);
+  --text:       #F0F0F0;
+  --text2:      #A0A0A0;
+  --card-bg:    #1A1A1A;
+  --input-text: #FFFFFF;
+  --input-bg:  #111111;
+  --nav-blur:  rgba(13, 13, 13, 0.85);
+  --shadow:    0 8px 40px rgba(0, 0, 0, 0.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ─── Base ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: background 0.3s, color 0.3s;
+  overflow-x: hidden;
 }
+
+/* ─── Stripe accent bar (top of page) ────────────────────────── */
+.ss-stripe-bar {
+  height: 4px;
+  background: linear-gradient(90deg,
+    var(--ss-blue)   0%,
+    var(--ss-green)  33%,
+    var(--ss-yellow) 66%,
+    var(--ss-red)    100%
+  );
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+}
+
+/* ─── Nav ─────────────────────────────────────────────────────── */
+.ss-nav {
+  position: fixed;
+  top: 4px;
+  left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 5%;
+  height: 64px;
+  background: var(--nav-blur);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────── */
+.ss-btn-ghost {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: border-color 0.2s, color 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.ss-btn-ghost:hover { border-color: var(--ss-red); color: var(--ss-red); }
+
+.ss-btn-primary {
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: var(--ss-red);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.ss-btn-primary:hover  { opacity: 0.9; transform: translateY(-1px); }
+.ss-btn-primary:active { transform: translateY(0); }
+
+.ss-btn-lg { padding: 14px 32px; border-radius: 10px; font-size: 1rem; font-weight: 600; }
+
+/* ─── Cards ───────────────────────────────────────────────────── */
+.ss-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+}
+.ss-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
+  border-color: var(--ss-red);
+}
+
+/* ─── Form inputs ─────────────────────────────────────────────── */
+.ss-input {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--input-text);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ss-input::placeholder { color: #999; }
+.ss-input:focus {
+  border-color: var(--ss-red);
+  box-shadow: 0 0 0 3px rgba(214, 48, 49, 0.15);
+  color: var(--input-text);
+}
+
+/* ─── Scroll reveal ───────────────────────────────────────────── */
+.ss-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.ss-reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ─── Pulse animation ─────────────────────────────────────────── */
+@keyframes ss-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.ss-pulse { animation: ss-pulse 2s infinite; }
+
+/* ─── Slide-up modal ──────────────────────────────────────────── */
+@keyframes ss-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ss-modal-anim { animation: ss-slide-up 0.25s ease; }
