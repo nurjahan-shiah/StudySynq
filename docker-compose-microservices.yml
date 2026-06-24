@@ -303,22 +303,3 @@ networks:
   studysync-network:
     driver: bridge
 
-# ============================================================================
-# VOLUMES
-# ============================================================================
-
-volumes:
-  pgdata:
-    driver: local
-  delta_lake_data:
-    driver: local
-  resources_data:
-    driver: local
-
-# ============================================================================
-# SUPABASE
-# ============================================================================
-
-environment:
-SUPABASE_URL=https://kodfszmzawzydyusebjt.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
