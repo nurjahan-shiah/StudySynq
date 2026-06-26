@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StudySync — Sync Your Success",
+  title: "StudySync - Sync Your Success",
   description: "Study groups, resources, and scheduling for university students.",
 };
 

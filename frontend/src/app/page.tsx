@@ -103,10 +103,10 @@ export default function Home() {
   ];
 
   const stats = [
-    { num: "12k+", label: "Active students" },
-    { num: "340+", label: "Study groups" },
+    { num: "k+", label: "Active students" },
+    { num: "5+", label: "Study groups" },
     { num: "98%",  label: "Satisfaction rate" },
-    { num: "50+",  label: "Universities" },
+    { num: "2+",  label: "Universities" },
   ];
 
   return (
