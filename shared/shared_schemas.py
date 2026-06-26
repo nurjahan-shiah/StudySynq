@@ -28,6 +28,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user_id: UUID
     user_email: str
+    user_role: str = "student"
+    is_first_login: bool = False
 
 # ============================================================================
 # User Schemas

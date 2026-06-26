@@ -140,6 +140,20 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password"
         )
 
+    # M3 — block deactivated accounts (is_active column added by admin-service migration)
+    try:
+        from sqlalchemy import text as _sqlt
+        row = db.execute(_sqlt("SELECT is_active FROM users WHERE id = :uid"), {"uid": str(user.id)}).fetchone()
+        if row is not None and not row[0]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account has been deactivated. Contact an administrator."
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # column not yet migrated — fail-open
+
     access_token = create_access_token(
         user_id=user.id,
         user_email=user.email,
