@@ -69,6 +69,23 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     db.refresh(new_resource)
     return new_resource
 
+@app.get("/resources/{resource_id}", response_model=ResourceResponse)
+async def get_resource(resource_id: str, db: Session = Depends(get_db),
+                       current_user: dict = Depends(get_current_user)):
+    """Get a single resource by ID."""
+    resource = db.query(Resource).filter(Resource.id == resource_id).first()
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    membership = (db.query(GroupMembership)
+                    .filter(GroupMembership.group_id == resource.group_id,
+                            GroupMembership.user_id == current_user["user_id"])
+                    .first())
+    if not membership and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+    return resource
+
 @app.delete("/resources/{resource_id}", status_code=204)
 async def delete_resource(resource_id: str, db: Session = Depends(get_db),
                           current_user: dict = Depends(get_current_user)):
