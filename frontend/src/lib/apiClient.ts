@@ -14,7 +14,7 @@ export interface ApiResponse<T> {
 class ApiClient {
   private getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('token');
+    return localStorage.getItem('ss_token');
   }
 
   private getHeaders(): Record<string, string> {

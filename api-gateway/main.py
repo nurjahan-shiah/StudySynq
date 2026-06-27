@@ -18,6 +18,7 @@ Service URLs (internal to Docker network):
 import httpx
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 # ============================================================================
@@ -74,6 +75,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -82,7 +91,12 @@ def get_service_for_route(path: str) -> str:
     """
     Determine which service handles this route.
     Example: /groups/123 → "groups"
+    Specific sub-paths take priority over the generic prefix match.
     """
+    import re
+    # /groups/{id}/resources[/*] → resources-service
+    if re.match(r"^/groups/[^/]+/resources(/.*)?$", path):
+        return "resources"
     for route_prefix, service in ROUTE_MAPPING.items():
         if path.startswith(route_prefix):
             return service
