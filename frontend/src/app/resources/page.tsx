@@ -79,7 +79,7 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
               href={resource.file_url}
               download={resource.file_name}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               style={{
                 padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                 background: T.red, color: "#fff", textDecoration: "none",
@@ -89,6 +89,8 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
               ↓ Download
             </a>
             <button
+              type="button"
+              aria-label="Close preview"
               onClick={onClose}
               style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: T.text2, padding: 4, lineHeight: 1 }}
             >
@@ -104,6 +106,7 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
               src={resource.file_url}
               title={resource.file_name}
               referrerPolicy="no-referrer"
+              sandbox="allow-same-origin allow-downloads"
               style={{ width: "100%", height: "100%", border: "none", minHeight: 480 }}
             />
           )}
@@ -125,7 +128,7 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
                 href={resource.file_url}
                 download={resource.file_name}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 style={{ padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: T.red, color: "#fff", textDecoration: "none" }}
               >
                 ↓ Download file
@@ -177,7 +180,7 @@ function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onP
         href={resource.file_url}
         download={resource.file_name}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         onClick={e => e.stopPropagation()}
         style={{
           padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,

@@ -135,7 +135,7 @@ export function useMyGroups(userId: string) {
   const [error, setError]     = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!userId) { setLoading(false); return; }
+    if (!userId) { setData([]); setError(null); setLoading(false); return; }
     setLoading(true);
     setError(null);
 

@@ -3,7 +3,7 @@ services/resources-service/main.py
 Resources Service - upload and manage study materials.
 Runs on port 8005
 """
-from uuid import uuid4
+from uuid import uuid4, UUID
 from fastapi import FastAPI, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ async def health():
     return {"status": "ok", "service": "resources-service"}
 
 @app.get("/groups/{group_id}/resources", response_model=list[ResourceResponse])
-async def list_resources(group_id: str, db: Session = Depends(get_db),
+async def list_resources(group_id: UUID, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
     """List all resources in a group."""
     membership = (db.query(GroupMembership)
@@ -77,7 +77,7 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     return new_resource
 
 @app.get("/resources/{resource_id}", response_model=ResourceResponse)
-async def get_resource(resource_id: str, db: Session = Depends(get_db),
+async def get_resource(resource_id: UUID, db: Session = Depends(get_db),
                        current_user: dict = Depends(get_current_user)):
     """Get a single resource by ID."""
     resource = db.query(Resource).filter(Resource.id == resource_id).first()
