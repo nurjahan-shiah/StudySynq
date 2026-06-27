@@ -52,7 +52,7 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
         onClick={onClose}
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 300 }}
       />
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-label="Resource preview" style={{
         position: "fixed", top: "50%", left: "50%",
         transform: "translate(-50%,-50%)",
         width: "min(860px, 92vw)", maxHeight: "88vh",
@@ -103,6 +103,7 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
             <iframe
               src={resource.file_url}
               title={resource.file_name}
+              referrerPolicy="no-referrer"
               style={{ width: "100%", height: "100%", border: "none", minHeight: 480 }}
             />
           )}
@@ -144,7 +145,10 @@ function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onP
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onPreview}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPreview(); } }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{

@@ -33,6 +33,13 @@ async def health():
 async def list_resources(group_id: str, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
     """List all resources in a group."""
+    membership = (db.query(GroupMembership)
+                    .filter(GroupMembership.group_id == group_id,
+                            GroupMembership.user_id == current_user["user_id"])
+                    .first())
+    if not membership and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
     return (db.query(Resource)
               .filter(Resource.group_id == group_id)
               .order_by(Resource.created_at.desc()).all())
