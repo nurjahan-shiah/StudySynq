@@ -11,7 +11,7 @@ StudySync helps university students connect with classmates, organize study sess
 | Name | email |
 |---|---|
 | Nurjahan Ahmed Shiah | nshiah49@my.yorku.ca |
-| Ali Shandhor | @ |
+| Ali Shandhor | ali2030@my.yorku.ca |
 | Muhammad Fahad Sohail | fadi786@my.yorku.ca |
 | Saaram Ahmed Mustafa | @ |
 | Uzma Alam | @ |
