@@ -7,6 +7,7 @@ services:
   
   db:
     image: postgres:16
+    platform: linux/arm64
     container_name: studysync-db
     environment:
       POSTGRES_DB: studysync
@@ -48,7 +49,7 @@ services:
       LOG_LEVEL: info
     networks:
       - studysync-network
-    restart: unless-stopped
+    restart: "unless-stopped"
 
   # ========================================================================
   # MICROSERVICES (Ports 8001-8008)
@@ -125,6 +126,7 @@ services:
     build:
       context: ./services/sessions-service
       dockerfile: Dockerfile
+    platform: linux/arm64  
     container_name: studysync-sessions
     ports:
       - "8004:8004"
@@ -140,7 +142,7 @@ services:
       - ./shared:/shared:ro
     networks:
       - studysync-network
-    restart: unless-stopped
+    restart: "no"
 
   # Resources Service (Port 8005)
   resources-service:
