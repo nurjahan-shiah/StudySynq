@@ -202,6 +202,31 @@ class UnreadCountResponse(BaseModel):
     unread_count: int
 
 # ============================================================================
+# Announcement Schemas (US-E.2 @author: Ahmed)
+# ============================================================================
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+    is_pinned: bool = False
+
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = None
+    message: Optional[str] = None
+    is_pinned: Optional[bool] = None
+
+class AnnouncementResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    author_id: UUID
+    author_name: str
+    title: str
+    message: str
+    is_pinned: bool
+    created_at: datetime
+    updated_at: datetime
+
+# ============================================================================
 # Error Schemas
 # ============================================================================
 
