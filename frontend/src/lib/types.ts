@@ -105,3 +105,16 @@ export interface Notification {
 export interface UnreadCount {
   unread_count: number;
 }
+
+// US-E.2 — Announcement Board
+export interface Announcement {
+  id: string;
+  group_id: string;
+  author_id: string;
+  author_name: string;
+  title: string;
+  message: string;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}

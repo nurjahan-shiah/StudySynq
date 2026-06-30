@@ -14,6 +14,7 @@ Service URLs (internal to Docker network):
 - admin-service: http://admin-service:8007
 - recommendations-service: http://recommendations-service:8008
 - notifications-service: http://notifications-service:8009
+- announcements-service: http://announcements-service:8010
 """
 
 import os
@@ -37,6 +38,7 @@ SERVICE_URLS = {
     "admin": "http://admin-service:8007",
     "recommendations": "http://recommendations-service:8008",
     "notifications": "http://notifications-service:8009",
+    "announcements": "http://announcements-service:8010",
 }
 
 # Routes that don't require authentication
@@ -59,6 +61,7 @@ ROUTE_MAPPING = {
     "/admin": "admin",
     "/recommendations": "recommendations",
     "/notifications": "notifications",
+    "/announcements": "announcements",
 }
 
 # ============================================================================
@@ -104,6 +107,9 @@ def get_service_for_route(path: str) -> str:
     # /groups/{id}/sessions[/*] → sessions-service (session routes live there, not in groups-service)
     if re.match(r"^/groups/[^/]+/sessions(/.*)?$", path):
         return "sessions"
+    # /groups/{id}/announcements[/*] → announcements-service
+    if re.match(r"^/groups/[^/]+/announcements(/.*)?$", path):
+        return "announcements"
     for route_prefix, service in ROUTE_MAPPING.items():
         if path.startswith(route_prefix):
             return service

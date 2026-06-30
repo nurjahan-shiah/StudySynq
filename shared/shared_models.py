@@ -231,3 +231,25 @@ class Notification(Base):
     # NOTE: the column is named "metadata", but `metadata` is reserved on SQLAlchemy
     # declarative classes, so the Python attribute is `meta`.
     meta = Column("metadata", JSONB, nullable=True)
+
+# ============================================================================
+# Announcements (US-E.2 @author: Ahmed)
+# ============================================================================
+
+class Announcement(Base):
+    """A group leader's announcement, shown in that group's Announcement Board.
+
+    Creating one triggers notifications to all group members via
+    shared_notifications.create_group_notifications. Pinned announcements sort
+    to the top of the feed.
+    """
+    __tablename__ = "announcements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    is_pinned = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

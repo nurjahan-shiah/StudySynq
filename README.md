@@ -55,6 +55,7 @@ StudySync/
 │   ├── courses-service/      # Course management
 │   ├── recommendations-service/ # ML-based group recommendations
 │   ├── notifications-service/ # Notification Centre (US-E.1)
+│   ├── announcements-service/ # Announcement Board (US-E.2)
 │   └── admin-service/        # Platform administration
 ├── frontend/                 # Next.js App Router (TypeScript)
 │   └── src/app/
@@ -64,6 +65,7 @@ StudySync/
 │       ├── dashboard/        # User dashboard
 │       ├── resources/        # Resources page
 │       ├── notifications/    # Notification Centre full page (US-E.1)
+│       ├── groups/           # Group list + detail w/ Announcement Board (US-E.2)
 │       └── admin/            # Admin console
 ├── shared/                   # Shared auth utilities across services
 ├── datalake/                 # Delta Lake analytics pipeline
@@ -71,7 +73,8 @@ StudySync/
 │   └── curl/
 │       ├── signup/           # Signup endpoint tests
 │       ├── dashboard/        # Dashboard/token validation tests
-│       └── notifications/    # Notification Centre tests (US-E.1)
+│       ├── notifications/    # Notification Centre tests (US-E.1)
+│       └── announcements/    # Announcement Board tests (US-E.2)
 ├── docker-compose-microservices.yml
 └── README.md
 ```
@@ -188,6 +191,7 @@ Make sure Docker is running first, then from the project root:
 bash tests/curl/signup/test_signup.sh
 bash tests/curl/dashboard/test_dashboard.sh
 bash tests/curl/notifications/test_notifications.sh
+bash tests/curl/announcements/test_announcements.sh
 ```
 
 ---

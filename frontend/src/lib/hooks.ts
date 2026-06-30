@@ -94,6 +94,18 @@ export interface AuthUser {
   user_name: string;
 }
 
+export interface Announcement {
+  id: string;
+  group_id: string;
+  author_id: string;
+  author_name: string;
+  title: string;
+  message: string;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Generic fetch hook ────────────────────────────────────────────────────────
 
 function useFetch<T>(endpoint: string, skip = false) {
@@ -157,6 +169,22 @@ export function useMyGroups(userId: string) {
 
   useEffect(() => { load(); }, [load]);
   return { data, loading, error, refetch: load };
+}
+
+// ── Single group + its members (US-E.2) ──────────────────────────────────────
+
+export function useGroup(groupId: string) {
+  return useFetch<GroupDetail>(`/groups/${groupId}`, !groupId);
+}
+
+export function useGroupMembers(groupId: string) {
+  return useFetch<GroupMember[]>(`/groups/${groupId}/members`, !groupId);
+}
+
+// ── Announcements for a group (US-E.2) ───────────────────────────────────────
+
+export function useGroupAnnouncements(groupId: string) {
+  return useFetch<Announcement[]>(`/groups/${groupId}/announcements`, !groupId);
 }
 
 // ── Available groups ──────────────────────────────────────────────────────────
