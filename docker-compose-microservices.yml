@@ -44,6 +44,7 @@ services:
       - courses-service
       - admin-service
       - recommendations-service
+      - notifications-service
     environment:
       LOG_LEVEL: info
     networks:
@@ -231,6 +232,28 @@ services:
     volumes:
       - ./shared:/shared:ro
       - delta_lake_data:/data/delta-lake
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Notifications Service (Port 8009) — US-E.1
+  notifications-service:
+    build:
+      context: ./services/notifications-service
+      dockerfile: Dockerfile
+    container_name: studysync-notifications
+    ports:
+      - "8009:8009"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8009
+    volumes:
+      - ./shared:/shared:ro
     networks:
       - studysync-network
     restart: unless-stopped

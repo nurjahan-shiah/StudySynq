@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Logo } from "./Logo";
+import { BellIcon } from "./BellIcon";
 
 type Theme = "dark" | "light";
 interface UserInfo { name: string; email: string; role: string }
@@ -16,13 +17,14 @@ const T = {
   red:    "var(--ss-red)",
 } as const;
 
-const NAV = [
+const NAV: { id: string; label: string; icon: ReactNode; path: string }[] = [
   { id: "dashboard",       label: "Dashboard",    icon: "⊞", path: "/dashboard"       },
   { id: "groups",          label: "Study groups", icon: "⚇", path: "/groups"          },
   { id: "courses",         label: "Courses",      icon: "◎", path: "/courses"         },
   { id: "sessions",        label: "Sessions",     icon: "▦", path: "/sessions"        },
   { id: "resources",       label: "Resources",    icon: "⊟", path: "/resources"       },
   { id: "recommendations", label: "Recommended",  icon: "✦", path: "/recommendations" },
+  { id: "notifications",   label: "Notifications", icon: <BellIcon size={15} />, path: "/notifications" },
 ];
 
 function ProfilePanel({ user, theme, onToggleTheme, onClose, onLogout, onDeactivate }: {
@@ -138,7 +140,7 @@ export function Sidebar() {
               border: "none", cursor: "pointer", width: "100%", textAlign: "left",
               fontWeight: isActive ? 700 : 400,
             }}>
-              <span style={{ fontSize: 15, flexShrink: 0, width: 18, textAlign: "center" }}>{item.icon}</span>
+              <span style={{ fontSize: 15, flexShrink: 0, width: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{item.icon}</span>
               <span style={{ flex: 1 }}>{item.label}</span>
             </button>
           );

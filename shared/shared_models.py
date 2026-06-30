@@ -7,7 +7,7 @@ Single source of truth for database schema.
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, Table, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 import enum
 
@@ -25,6 +25,14 @@ class UserRole(str, enum.Enum):
 class GroupMembershipRole(str, enum.Enum):
     MEMBER = "member"
     LEADER = "leader"
+
+# US-E.1 @author: Ahmed — Notification Centre
+class NotificationType(str, enum.Enum):
+    SESSION = "session"
+    ANNOUNCEMENT = "announcement"
+    TASK = "task"
+    RESOURCE = "resource"
+    SYSTEM = "system"
 
 # ============================================================================
 # Core Entities
@@ -196,3 +204,30 @@ class Recommendation(Base):
     # Relationships
     user = relationship("User", back_populates="recommendations")
     group = relationship("Group", back_populates="recommendations")
+
+# ============================================================================
+# Notifications (US-E.1 @author: Ahmed)
+# ============================================================================
+
+class Notification(Base):
+    """A single notification delivered to one user.
+
+    Rows are created by triggering services (e.g. Sessions) via the helpers in
+    shared_notifications.py. The Notification Centre service exposes read /
+    unread-count / mark-read endpoints over this table.
+    """
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # group_id is nullable: system notifications are not tied to a group
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=True, index=True)
+    type = Column(String(50), nullable=False)  # NotificationType value
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    link = Column(String(500), nullable=True)  # where clicking the notification navigates
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    # NOTE: the column is named "metadata", but `metadata` is reserved on SQLAlchemy
+    # declarative classes, so the Python attribute is `meta`.
+    meta = Column("metadata", JSONB, nullable=True)

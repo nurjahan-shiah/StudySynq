@@ -42,10 +42,12 @@ class ApiClient {
         body: body ? JSON.stringify(body) : undefined,
       });
 
-      const data = await response.json();
+      // 204 No Content (e.g. DELETE) and other empty responses have no JSON body.
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : undefined;
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Request failed');
+        throw new Error((data && data.detail) || 'Request failed');
       }
 
       return { data, status: response.status };
@@ -67,6 +69,10 @@ class ApiClient {
 
   put<T>(endpoint: string, body: any) {
     return this.request<T>('PUT', endpoint, body);
+  }
+
+  patch<T>(endpoint: string, body?: any) {
+    return this.request<T>('PATCH', endpoint, body);
   }
 
   delete<T>(endpoint: string) {

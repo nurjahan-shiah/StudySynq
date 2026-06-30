@@ -80,3 +80,28 @@ export interface AdminStats {
   total_sessions: number;
   total_resources: number;
 }
+
+// US-E.1 — Notification Centre
+export type NotificationType =
+  | "session"
+  | "announcement"
+  | "task"
+  | "resource"
+  | "system";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  group_id: string | null;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface UnreadCount {
+  unread_count: number;
+}

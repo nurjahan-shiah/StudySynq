@@ -2,6 +2,7 @@
 
 import { useState, useEffect, CSSProperties } from "react";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
+import { NotificationBell } from "@/app/components/NotificationBell";
 import {
   useMyGroups,
   useMyResources,
@@ -238,7 +239,10 @@ export default function ResourcesPage() {
         {/* Top bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, color: T.text, margin: 0 }}>Resources</h1>
-          <ProfileButton />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <NotificationBell />
+            <ProfileButton />
+          </div>
         </div>
 
         {/* Search + filters */}

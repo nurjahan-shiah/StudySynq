@@ -12,7 +12,7 @@ StudySync helps university students connect with classmates, organize study sess
 | Nurjahan Ahmed Shiah | nshiah49@my.yorku.ca |
 | Ali Shandhor | ali2030@my.yorku.ca |
 | Muhammad Fahad Sohail | fadi786@my.yorku.ca |
-| Saaram Ahmed Mustafa | @ |
+| Saaram Ahmed Mustafa | ahmed779@my.yorku.ca |
 | Uzma Alam | @ |
 | Nusayba Hossain | @ |
 
@@ -54,6 +54,7 @@ StudySync/
 │   ├── resources-service/    # File/resource sharing
 │   ├── courses-service/      # Course management
 │   ├── recommendations-service/ # ML-based group recommendations
+│   ├── notifications-service/ # Notification Centre (US-E.1)
 │   └── admin-service/        # Platform administration
 ├── frontend/                 # Next.js App Router (TypeScript)
 │   └── src/app/
@@ -62,13 +63,15 @@ StudySync/
 │       ├── login/            # Login
 │       ├── dashboard/        # User dashboard
 │       ├── resources/        # Resources page
+│       ├── notifications/    # Notification Centre full page (US-E.1)
 │       └── admin/            # Admin console
 ├── shared/                   # Shared auth utilities across services
 ├── datalake/                 # Delta Lake analytics pipeline
 ├── tests/
 │   └── curl/
 │       ├── signup/           # Signup endpoint tests
-│       └── dashboard/        # Dashboard/token validation tests
+│       ├── dashboard/        # Dashboard/token validation tests
+│       └── notifications/    # Notification Centre tests (US-E.1)
 ├── docker-compose-microservices.yml
 └── README.md
 ```
@@ -184,6 +187,7 @@ Make sure Docker is running first, then from the project root:
 ```bash
 bash tests/curl/signup/test_signup.sh
 bash tests/curl/dashboard/test_dashboard.sh
+bash tests/curl/notifications/test_notifications.sh
 ```
 
 ---

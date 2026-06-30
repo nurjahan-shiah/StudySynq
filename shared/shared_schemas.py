@@ -5,7 +5,7 @@ Defines the contract between services and clients.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
@@ -181,6 +181,25 @@ class RecommendationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# ============================================================================
+# Notification Schemas (US-E.1 @author: Ahmed)
+# ============================================================================
+
+class NotificationResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    group_id: Optional[UUID] = None
+    type: str
+    title: str
+    message: str
+    link: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+    metadata: Optional[Dict[str, Any]] = None
+
+class UnreadCountResponse(BaseModel):
+    unread_count: int
 
 # ============================================================================
 # Error Schemas

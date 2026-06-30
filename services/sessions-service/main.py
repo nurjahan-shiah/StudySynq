@@ -15,6 +15,7 @@ from shared_database import engine, get_db
 from shared_auth import get_current_user
 from shared_schemas import StudySessionCreate, StudySessionUpdate, StudySessionResponse, StudySessionDetailResponse, SessionRSVPCreate, SessionRSVPResponse
 from shared_models import SessionRSVP, SessionRSVPStatus
+from shared_notifications import create_group_notifications  # US-E.1
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -77,7 +78,7 @@ async def create_session(group_id: str, data: StudySessionCreate,
         group_id=group_id,
         title=data.title,
         scheduled_at=data.scheduled_at,
-        duration_minutes=data.duration_minutes,
+        # duration_minutes is not part of StudySessionCreate; the model defaults it to 60.
         location=data.location,
         description=data.description,
         created_by=current_user["user_id"],
@@ -85,6 +86,23 @@ async def create_session(group_id: str, data: StudySessionCreate,
     db.add(new_session)
     db.commit()
     db.refresh(new_session)
+
+    # US-E.1: notify every group member (except the scheduler) that a session was
+    # scheduled. Never let a notification failure break session creation.
+    try:
+        create_group_notifications(
+            db,
+            group_id=group_id,
+            type="session",
+            title="New session scheduled",
+            message=f"{new_session.title} — {new_session.scheduled_at:%b %d, %H:%M}",
+            link=f"/sessions/{new_session.id}",
+            exclude_user_id=current_user["user_id"],
+            meta={"session_id": str(new_session.id), "group_id": str(group_id)},
+        )
+    except Exception as e:  # pragma: no cover - notifications are best-effort
+        print(f"[sessions-service] failed to create session notifications: {e}")
+
     return new_session
 
 # US-C.5 @author: Fahad Sohail
