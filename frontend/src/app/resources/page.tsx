@@ -1,5 +1,7 @@
 "use client";
 
+// US-D.5 — Upload Activity & Storage Stats (leader-only widget)
+
 import { useState, useEffect, CSSProperties } from "react";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
@@ -7,6 +9,7 @@ import {
   useMyGroups,
   useMyResources,
   type ResourceWithGroup,
+  type MyGroup,
 } from "@/lib/hooks";
 
 const T = {
@@ -40,6 +43,135 @@ function isImage(fileType: string): boolean {
 
 function isPDF(fileType: string): boolean {
   return fileType.toLowerCase().includes("pdf");
+}
+
+// ── Stats Widget (US-D.5, leader-only) ───────────────────────────────────────
+
+function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+      padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4,
+    }}>
+      <span style={{ fontSize: 22, fontWeight: 700, color: T.text }}>{value}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: T.text2 }}>{label}</span>
+      {sub && <span style={{ fontSize: 10, color: T.text2, opacity: 0.7 }}>{sub}</span>}
+    </div>
+  );
+}
+
+function StatsWidget({ resources, myGroups }: { resources: ResourceWithGroup[]; myGroups: MyGroup[] }) {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const totalFiles  = resources.length;
+  const thisWeek    = resources.filter(r => new Date(r.created_at) >= weekAgo).length;
+  const pdfCount    = resources.filter(r => isPDF(r.file_type)).length;
+  const imageCount  = resources.filter(r => isImage(r.file_type)).length;
+  const otherCount  = totalFiles - pdfCount - imageCount;
+
+  const perGroup = myGroups
+    .filter(g => g.my_role === "leader")
+    .map(g => ({
+      name:  g.name,
+      count: resources.filter(r => r.group_id === g.id).length,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const recent = resources.slice(0, 5);
+
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          Upload Activity · Leader View
+        </span>
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: T.text2 }}
+        >
+          {open ? "Hide" : "Show"}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Top stat cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+            <StatCard label="Total Files" value={totalFiles} />
+            <StatCard label="This Week" value={thisWeek} sub="last 7 days" />
+            <StatCard label="PDFs" value={pdfCount} />
+            <StatCard label="Images" value={imageCount} />
+            <StatCard label="Other" value={otherCount} />
+          </div>
+
+          {/* Per-group breakdown + recent uploads side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+
+            {/* Per-group */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "14px 18px" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>
+                Files by Group
+              </p>
+              {perGroup.length === 0 ? (
+                <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>No groups.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {perGroup.map(g => (
+                    <div key={g.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: T.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {g.name}
+                      </span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                        background: `${T.red}15`, color: T.red,
+                      }}>
+                        {g.count}
+                      </span>
+                      {/* bar */}
+                      <div style={{ width: 60, height: 4, borderRadius: 2, background: T.bg3, flexShrink: 0 }}>
+                        <div style={{
+                          height: "100%", borderRadius: 2, background: T.red,
+                          width: totalFiles > 0 ? `${Math.round((g.count / totalFiles) * 100)}%` : "0%",
+                        }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent uploads */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "14px 18px" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>
+                Recent Uploads
+              </p>
+              {recent.length === 0 ? (
+                <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>No uploads yet.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {recent.map(r => (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>{fileIcon(r.file_type)}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 12, color: T.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.file_name}
+                        </p>
+                        <p style={{ fontSize: 10, color: T.text2, margin: 0 }}>{formatDate(r.created_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Preview Modal ─────────────────────────────────────────────────────────────
@@ -211,6 +343,7 @@ export default function ResourcesPage() {
   const { data: resources, loading: resLoading, error } = useMyResources(myGroups);
 
   const loading = groupsLoading || resLoading;
+  const isLeader = myGroups.some((g: MyGroup) => g.my_role === "leader");
 
   const filtered = resources.filter(r => {
     const matchSearch = r.file_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -244,6 +377,11 @@ export default function ResourcesPage() {
             <ProfileButton />
           </div>
         </div>
+
+        {/* Stats widget — leaders only */}
+        {!loading && isLeader && (
+          <StatsWidget resources={resources} myGroups={myGroups} />
+        )}
 
         {/* Search + filters */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
