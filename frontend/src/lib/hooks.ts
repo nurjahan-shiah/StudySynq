@@ -59,6 +59,18 @@ export interface SessionWithGroup extends StudySession {
   group_name: string;
 }
 
+export interface SessionRSVP {
+  id: string;
+  session_id: string;
+  user_id: string;
+  status: "attending" | "not_attending" | "maybe";
+  created_at: string;
+}
+
+export interface StudySessionDetail extends StudySession {
+  attendees: SessionRSVP[];
+}
+
 export interface Resource {
   id: string;
   group_id: string;
@@ -308,7 +320,21 @@ export function useAdminStats() {
   return useFetch<AdminStats>("/admin/stats");
 }
 
+// ── Sessions for a single group (US-C.3) ─────────────────────────────────────
+
+export function useGroupSessions(groupId: string) {
+  return useFetch<StudySession[]>(`/groups/${groupId}/sessions`, !groupId);
+}
+
+// ── Session detail with attendees (US-C.5) ────────────────────────────────────
+
+export function useSessionDetail(sessionId: string) {
+  return useFetch<StudySessionDetail>(`/sessions/${sessionId}`, !sessionId);
+}
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
-export const joinGroup  = (id: string) => apiClient.post(`/groups/${id}/join`, {});
-export const leaveGroup = (id: string) => apiClient.delete(`/groups/${id}/leave`);
+export const joinGroup   = (id: string) => apiClient.post(`/groups/${id}/join`, {});
+export const leaveGroup  = (id: string) => apiClient.delete(`/groups/${id}/leave`);
+export const rsvpSession = (sessionId: string, status: "attending" | "not_attending" | "maybe") =>
+  apiClient.post<SessionRSVP>(`/sessions/${sessionId}/rsvp`, { status });
