@@ -200,6 +200,7 @@ class Recommendation(Base):
     group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
     score = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_cancelled = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="recommendations")
