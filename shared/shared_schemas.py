@@ -128,6 +128,7 @@ class StudySessionResponse(StudySessionBase):
     group_id: UUID
     created_by: UUID
     created_at: datetime
+    is_cancelled: bool = False
 
     class Config:
         from_attributes = True

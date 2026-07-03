@@ -139,8 +139,28 @@ async def update_session(session_id: str, data: StudySessionUpdate,
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Not allowed to edit this session")
+    # US-C.4 @author: Uzma Alam
+    if session.is_cancelled:
+        raise HTTPException(status_code=400, detail="Cannot edit a cancelled session")
     for field, value in data.dict(exclude_unset=True).items():
         setattr(session, field, value)
+    db.commit()
+    db.refresh(session)
+    return session
+
+# US-C.4 @author: Uzma Alam
+@app.patch("/sessions/{session_id}/cancel", response_model=StudySessionResponse)
+async def cancel_session(session_id: str, db: Session = Depends(get_db),
+                         current_user: dict = Depends(get_current_user)):
+    """Cancel a session (creator or admin only)."""
+    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed to cancel this session")
+    if session.is_cancelled:
+        raise HTTPException(status_code=400, detail="Session is already cancelled")
+    session.is_cancelled = True
     db.commit()
     db.refresh(session)
     return session
