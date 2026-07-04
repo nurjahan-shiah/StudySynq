@@ -338,3 +338,24 @@ export const joinGroup   = (id: string) => apiClient.post(`/groups/${id}/join`, 
 export const leaveGroup  = (id: string) => apiClient.delete(`/groups/${id}/leave`);
 export const rsvpSession = (sessionId: string, status: "attending" | "not_attending" | "maybe") =>
   apiClient.post<SessionRSVP>(`/sessions/${sessionId}/rsvp`, { status });
+
+// US-C.1 @author: Uzma Alam
+export const createSession = (groupId: string, data: {
+  title: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  location?: string;
+  description?: string;
+}) => apiClient.post(`/groups/${groupId}/sessions`, data);
+
+// US-C.4 @author: Uzma Alam
+export const updateSession = (sessionId: string, data: {
+  title?: string;
+  scheduled_at?: string;
+  location?: string;
+  description?: string;
+}) => apiClient.put(`/sessions/${sessionId}`, data);
+
+// US-C.4 @author: Uzma Alam
+export const cancelSession = (sessionId: string) =>
+  apiClient.patch(`/sessions/${sessionId}/cancel`, {});

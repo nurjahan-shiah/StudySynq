@@ -7,8 +7,7 @@ import { useState, useEffect, CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { useMyGroups, useMySessions, type SessionWithGroup, type MyGroup } from "@/lib/hooks";
-
+import { useMyGroups, useMySessions, createSession, type SessionWithGroup, type MyGroup } from "@/lib/hooks";
 const T = {
   bg:     "var(--bg)",
   bg2:    "var(--bg2)",
@@ -111,6 +110,114 @@ function Section({ label, sessions, emptyMsg }: { label: string; sessions: Sessi
   );
 }
 
+// create session modal (US-C.1)
+// @author: Uzma Alam
+
+function CreateSessionModal({ groups, onClose, onCreated }: {
+  groups: MyGroup[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [groupId, setGroupId]         = useState(groups[0]?.id ?? "");
+  const [title, setTitle]             = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [duration, setDuration]       = useState(60);
+  const [location, setLocation]       = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (!title || !scheduledAt || !groupId) {
+      setError("Title, group and date are required.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const res = await createSession(groupId, {
+      title,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      duration_minutes: duration,
+      location: location || undefined,
+      description: description || undefined,
+    });
+    if (res.error) {
+      setError(res.error);
+      setSubmitting(false);
+    } else {
+      onCreated();
+      onClose();
+    }
+  }
+
+  const inputStyle = {
+    width: "100%", padding: "8px 12px", borderRadius: 8,
+    border: `1px solid ${T.border}`, background: T.bg2,
+    color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box" as const,
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 480, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>Schedule Session</h2>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Group</label>
+          <select value={groupId} onChange={e => setGroupId(e.target.value)} style={inputStyle}>
+            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Title *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Midterm Review" style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Date & Time *</label>
+          <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Duration (minutes)</label>
+          <input type="number" value={duration} onChange={e => setDuration(Number(e.target.value))} min={15} step={15} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Location</label>
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room or video link" style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What will you cover?" rows={3}
+            style={{ ...inputStyle, resize: "vertical" }} />
+        </div>
+
+        {error && <p style={{ fontSize: 12, color: T.red, margin: 0 }}>{error}</p>}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2, cursor: "pointer",
+          }}>Cancel</button>
+          <button onClick={handleSubmit} disabled={submitting} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.7 : 1,
+          }}>{submitting ? "Scheduling…" : "Schedule"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 type FilterMode = "all" | "upcoming" | "past";
@@ -120,7 +227,8 @@ export default function SessionsPage() {
   const [userId, setUserId]     = useState("");
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState<FilterMode>("upcoming");
-  const [groupId, setGroupId]   = useState("all");
+  const [groupId, setGroupId]     = useState("all");
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -129,7 +237,7 @@ export default function SessionsPage() {
   }, [router]);
 
   const { data: myGroups, loading: groupsLoading } = useMyGroups(userId);
-  const { data: sessions, loading: sessionsLoading, error } = useMySessions(myGroups);
+  const { data: sessions, loading: sessionsLoading, error, refetch } = useMySessions(myGroups);
 
   const loading = groupsLoading || sessionsLoading;
 
@@ -165,6 +273,15 @@ export default function SessionsPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, color: T.text, margin: 0 }}>Sessions</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {myGroups.some(g => g.my_role === "leader") && (
+  <button
+    onClick={() => setShowCreate(true)}
+    style={{
+      padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+      border: "none", background: T.red, color: "#fff", cursor: "pointer",
+    }}
+  >+ Schedule Session</button>
+)}
             <NotificationBell />
             <ProfileButton />
           </div>
@@ -252,6 +369,14 @@ export default function SessionsPage() {
               />
             )}
           </div>
+        )}
+        {/* US-C.1 @author: Uzma Alam — Create Session Modal */}
+        {showCreate && (
+          <CreateSessionModal
+            groups={myGroups.filter(g => g.my_role === "leader")}
+            onClose={() => setShowCreate(false)}
+            onCreated={() => refetch()}
+          />
         )}
       </main>
     </div>
