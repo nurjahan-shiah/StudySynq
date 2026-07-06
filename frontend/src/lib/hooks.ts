@@ -118,6 +118,27 @@ export interface Announcement {
   updated_at: string;
 }
 
+export type TaskStatus = "todo" | "in_progress" | "completed";
+export type TaskPriority = "low" | "medium" | "high";
+
+export interface Task {
+  id: string;
+  group_id: string;
+  group_name: string;
+  assigned_by: string;
+  assigned_by_name: string;
+  assigned_to: string;
+  assigned_to_name: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 // ── Generic fetch hook ────────────────────────────────────────────────────────
 
 function useFetch<T>(endpoint: string, skip = false) {
@@ -197,6 +218,16 @@ export function useGroupMembers(groupId: string) {
 
 export function useGroupAnnouncements(groupId: string) {
   return useFetch<Announcement[]>(`/groups/${groupId}/announcements`, !groupId);
+}
+
+// ── Tasks (US-E.3) ────────────────────────────────────────────────────────────
+
+export function useGroupTasks(groupId: string) {
+  return useFetch<Task[]>(`/groups/${groupId}/tasks`, !groupId);
+}
+
+export function useMyTasks(userId: string) {
+  return useFetch<Task[]>(`/tasks/user/${userId}`, !userId);
 }
 
 // ── Available groups ──────────────────────────────────────────────────────────

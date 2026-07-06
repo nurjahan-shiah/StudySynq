@@ -47,6 +47,7 @@ services:
       - recommendations-service
       - notifications-service
       - announcements-service
+      - tasks-service
     environment:
       LOG_LEVEL: info
     networks:
@@ -280,6 +281,28 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8010
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Tasks Service (Port 8011) — US-E.3
+  tasks-service:
+    build:
+      context: ./services/tasks-service
+      dockerfile: Dockerfile
+    container_name: studysync-tasks
+    ports:
+      - "8011:8011"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8011
     volumes:
       - ./shared:/shared:ro
     networks:
