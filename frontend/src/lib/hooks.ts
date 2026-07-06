@@ -365,3 +365,10 @@ export const updateSession = (sessionId: string, data: {
 // US-C.4 @author: Uzma Alam
 export const cancelSession = (sessionId: string) =>
   apiClient.patch(`/sessions/${sessionId}/cancel`, {});
+
+// US-G.2 @author: Uzma Alam
+export const summarizeSession = (sessionId: string, notes: string) =>
+  apiClient.post<{ session_id: string; summary: string }>(
+    `/sessions/${sessionId}/summarize?notes=${encodeURIComponent(notes)}`,
+    {}
+  );

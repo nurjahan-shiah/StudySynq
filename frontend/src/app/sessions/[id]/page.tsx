@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { useSessionDetail, useGroup, rsvpSession, updateSession, cancelSession, type SessionRSVP } from "@/lib/hooks";
+import { useSessionDetail, useGroup, rsvpSession, updateSession, cancelSession, summarizeSession, type SessionRSVP } from "@/lib/hooks";
 
 const T = {
   bg:     "var(--bg)",
@@ -158,10 +158,106 @@ function EditSessionModal({ session, onClose, onSaved }: {
     </div>
   );
 }
+// US-G.2 @author: Uzma Alam
+//  Smart Session Notes Summarizer
+function SummarizeModal({ sessionId, onClose }: {
+  sessionId: string;
+  onClose: () => void;
+}) {
+  const [notes, setNotes]       = useState("");
+  const [summary, setSummary]   = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  async function handleSummarize() {
+    if (!notes.trim()) { setError("Please paste your session notes first."); return; }
+    setLoading(true);
+    setError(null);
+    setSummary(null);
+    const res = await summarizeSession(sessionId, notes);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSummary(res.data?.summary ?? null);
+    }
+    setLoading(false);
+  }
+
+  const inputStyle = {
+    width: "100%", padding: "8px 12px", borderRadius: 8,
+    border: `1px solid ${T.border}`, background: T.bg2,
+    color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box" as const,
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 560, maxHeight: "85vh",
+        display: "flex", flexDirection: "column", gap: 16, overflowY: "auto",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>
+            AI Session Notes Summarizer
+          </h2>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: T.text2, fontSize: 18, lineHeight: 1,
+          }}>×</button>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>
+            Paste your rough notes or transcript
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. covered binary trees, discussed complexity, assigned chapter 5 reading..."
+            rows={6}
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+        </div>
+
+        {error && <p style={{ fontSize: 12, color: T.red, margin: 0 }}>{error}</p>}
+
+        {summary && (
+          <div style={{
+            background: T.bg2, border: `1px solid ${T.border}`,
+            borderRadius: 10, padding: "14px 16px",
+          }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>
+              AI Summary
+            </p>
+            <p style={{ fontSize: 13, color: T.text, margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+              {summary}
+            </p>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2, cursor: "pointer",
+          }}>Close</button>
+          <button onClick={handleSummarize} disabled={loading} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
+          }}>{loading ? "Summarizing…" : "Summarize"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SessionDetailPage() {
+  const [showSummarize, setShowSummarize] = useState(false);
   const router   = useRouter();
   const params   = useParams<{ id: string }>();
   const sessionId = params.id;
@@ -314,6 +410,11 @@ export default function SessionDetailPage() {
                       color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
                       opacity: cancelling ? 0.6 : 1,
                     }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+                    <button onClick={() => setShowSummarize(true)} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${T.border}`, background: "transparent",
+                      color: T.text2, cursor: "pointer",
+                    }}>Summarize Notes</button>
                   </div>
                 )}
                 {cancelError && <p style={{ fontSize: 11, color: T.red, margin: "8px 0 0" }}>{cancelError}</p>}
@@ -404,6 +505,14 @@ export default function SessionDetailPage() {
             session={session}
             onClose={() => setShowEdit(false)}
             onSaved={() => refetch()}
+          />
+        )}
+
+        {/* US-G.2 @author: Uzma Alam — Summarize Notes Modal */}
+        {showSummarize && (
+          <SummarizeModal
+            sessionId={sessionId}
+            onClose={() => setShowSummarize(false)}
           />
         )}
       </main>
