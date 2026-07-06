@@ -130,6 +130,8 @@ services:
       dockerfile: Dockerfile
     platform: linux/arm64  
     container_name: studysync-sessions
+    env_file:
+      - .env
     ports:
       - "8004:8004"
     depends_on:
@@ -140,6 +142,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8004
+      GROQ_API_KEY: ${GROQ_API_KEY}
     volumes:
       - ./shared:/shared:ro
     networks:
