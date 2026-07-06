@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { useSessionDetail, useGroup, rsvpSession, type SessionRSVP } from "@/lib/hooks";
+import { useSessionDetail, useGroup, rsvpSession, updateSession, cancelSession, type SessionRSVP } from "@/lib/hooks";
 
 const T = {
   bg:     "var(--bg)",
@@ -74,6 +74,91 @@ function AttendeePill({ rsvp }: { rsvp: SessionRSVP }) {
   );
 }
 
+// Edit Session Modal (US-C.4) 
+// @author: Uzma Alam
+
+function EditSessionModal({ session, onClose, onSaved }: {
+  session: { id: string; title: string; scheduled_at: string; location: string | null; description: string | null };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle]             = useState(session.title);
+  const [scheduledAt, setScheduledAt] = useState(session.scheduled_at.slice(0, 16));
+  const [location, setLocation]       = useState(session.location ?? "");
+  const [description, setDescription] = useState(session.description ?? "");
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  async function handleSave() {
+    if (!title || !scheduledAt) { setError("Title and date are required."); return; }
+    setSubmitting(true);
+    setError(null);
+    const res = await updateSession(session.id, {
+      title,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      location: location || undefined,
+      description: description || undefined,
+    });
+    if (res.error) { setError(res.error); setSubmitting(false); }
+    else           { onSaved(); onClose(); }
+  }
+
+  const inputStyle = {
+    width: "100%", padding: "8px 12px", borderRadius: 8,
+    border: `1px solid ${T.border}`, background: T.bg2,
+    color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box" as const,
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 480, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>Edit Session</h2>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Title *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Date & Time *</label>
+          <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Location</label>
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room or video link" style={inputStyle} />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
+            style={{ ...inputStyle, resize: "vertical" }} />
+        </div>
+
+        {error && <p style={{ fontSize: 12, color: T.red, margin: 0 }}>{error}</p>}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2, cursor: "pointer",
+          }}>Cancel</button>
+          <button onClick={handleSave} disabled={submitting} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.7 : 1,
+          }}>{submitting ? "Saving…" : "Save Changes"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SessionDetailPage() {
@@ -81,10 +166,14 @@ export default function SessionDetailPage() {
   const params   = useParams<{ id: string }>();
   const sessionId = params.id;
 
-  const [userId, setUserId]       = useState("");
-  const [myRSVP, setMyRSVP]       = useState<RSVPStatus | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [rsvpError, setRsvpError]  = useState<string | null>(null);
+  const [userId, setUserId]         = useState("");
+  const [myRSVP, setMyRSVP]         = useState<RSVPStatus | null>(null);
+  const [submitting, setSubmitting]  = useState(false);
+  const [rsvpError, setRsvpError]   = useState<string | null>(null);
+  // US-C.4 @author: Uzma Alam
+  const [showEdit, setShowEdit]     = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -116,7 +205,19 @@ export default function SessionDetailPage() {
     setSubmitting(false);
   }
 
+  // US-C.4 @author: Uzma Alam
+  async function handleCancel() {
+    if (!confirm("Are you sure you want to cancel this session?")) return;
+    setCancelling(true);
+    setCancelError(null);
+    const res = await cancelSession(sessionId);
+    if (res.error) { setCancelError(res.error); }
+    else           { refetch(); }
+    setCancelling(false);
+  }
+
   const upcoming = session ? new Date(session.scheduled_at) >= new Date() : false;
+  const isCreator = session?.created_by === userId;
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
@@ -176,20 +277,46 @@ export default function SessionDetailPage() {
                       </button>
                     )}
                   </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0,
-                    background: upcoming ? `${T.red}18` : T.bg3,
-                    color: upcoming ? T.red : T.text2,
-                    border: `1px solid ${upcoming ? `${T.red}30` : T.border}`,
-                  }}>
-                    {upcoming ? "Upcoming" : "Past"}
-                  </span>
+                  {/* cancelled badge or status badge */}
+                  {(session as any).is_cancelled ? (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0,
+                      background: `${T.red}18`, color: T.red, border: `1px solid ${T.red}30`,
+                    }}>Cancelled</span>
+                  ) : (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0,
+                      background: upcoming ? `${T.red}18` : T.bg3,
+                      color: upcoming ? T.red : T.text2,
+                      border: `1px solid ${upcoming ? `${T.red}30` : T.border}`,
+                    }}>
+                      {upcoming ? "Upcoming" : "Past"}
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <DetailRow icon="▦" label={formatDateTime(session.scheduled_at)} />
                   {session.location && <DetailRow icon="⊙" label={session.location} />}
                 </div>
+
+                {/* Edit / Cancel buttons */}
+                {isCreator && !(session as any).is_cancelled && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                    <button onClick={() => setShowEdit(true)} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${T.border}`, background: "transparent",
+                      color: T.text2, cursor: "pointer",
+                    }}>Edit</button>
+                    <button onClick={handleCancel} disabled={cancelling} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${T.red}`, background: "transparent",
+                      color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
+                      opacity: cancelling ? 0.6 : 1,
+                    }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+                  </div>
+                )}
+                {cancelError && <p style={{ fontSize: 11, color: T.red, margin: "8px 0 0" }}>{cancelError}</p>}
               </div>
 
               {/* Description */}
@@ -269,6 +396,15 @@ export default function SessionDetailPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* US-C.4 @author: Uzma Alam — Edit Session Modal */}
+        {showEdit && session && (
+          <EditSessionModal
+            session={session}
+            onClose={() => setShowEdit(false)}
+            onSaved={() => refetch()}
+          />
         )}
       </main>
     </div>

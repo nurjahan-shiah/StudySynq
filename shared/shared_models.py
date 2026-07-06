@@ -99,6 +99,7 @@ class StudySession(Base):
     description = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_cancelled    = Column(Boolean, default=False)
 
     # Relationships
     group = relationship("Group", back_populates="sessions")
@@ -254,3 +255,4 @@ class Announcement(Base):
     is_pinned = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
