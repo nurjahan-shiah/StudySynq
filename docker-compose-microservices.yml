@@ -291,6 +291,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_SUPABASE_URL: https://kodfszmzawzydyusebjt.supabase.co
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
+        NEXT_PUBLIC_SUPABASE_BUCKET: resources
     container_name: studysync-frontend
     ports:
       - "3000:3000"

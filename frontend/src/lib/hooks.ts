@@ -326,6 +326,12 @@ export function useGroupSessions(groupId: string) {
   return useFetch<StudySession[]>(`/groups/${groupId}/sessions`, !groupId);
 }
 
+// ── Resources for a single group (US-D.1 / US-D.2) ───────────────────────────
+
+export function useGroupResources(groupId: string) {
+  return useFetch<Resource[]>(`/groups/${groupId}/resources`, !groupId);
+}
+
 // ── Session detail with attendees (US-C.5) ────────────────────────────────────
 
 export function useSessionDetail(sessionId: string) {

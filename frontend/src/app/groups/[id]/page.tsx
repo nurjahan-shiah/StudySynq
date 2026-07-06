@@ -12,6 +12,7 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
 import { useGroup, useGroupMembers } from "@/lib/hooks";
+import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 
 const T = {
   bg:     "var(--bg)",
@@ -128,7 +129,7 @@ export default function GroupDetailPage() {
         )}
 
         {tab === "resources" && (
-          <LinkOut icon="⊟" label="Shared files live on the Resources page." href="/resources" router={router} />
+          <GroupResourcesPanel groupId={groupId} canManage={isLeader} userId={userId} />
         )}
 
         {tab === "members" && (

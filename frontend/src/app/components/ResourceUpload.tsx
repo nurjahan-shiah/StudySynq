@@ -2,19 +2,17 @@
 
 /**
  * frontend/src/app/components/ResourceUpload.tsx
- * US-D.1 — full upload pipeline UI: pick/drop a file → upload straight to
- * Supabase Storage with a live progress bar → register the file's
- * metadata with the backend. Drop this into any group's Resources tab.
+ * US-D.1 — simple button that uploads a file straight to Supabase Storage
+ * (with a progress bar) then registers its metadata with the backend.
  */
 
-import { useRef, useState, DragEvent, ChangeEvent } from "react";
+import { useRef, useState, ChangeEvent } from "react";
 import { apiClient } from "@/lib/apiClient";
 import { uploadFileToSupabase } from "@/lib/supabaseUpload";
 import type { Resource } from "@/lib/hooks";
 
 const T = {
   border: "var(--border)",
-  bg2:    "var(--bg2)",
   bg3:    "var(--bg3)",
   text:   "var(--text)",
   text2:  "var(--text2)",
@@ -33,7 +31,6 @@ export function ResourceUpload({
   onUploaded: (resource: Resource) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -52,10 +49,8 @@ export function ResourceUpload({
     setPhase("uploading");
 
     try {
-      // 1. Upload the raw bytes straight to Supabase Storage.
       const { publicUrl } = await uploadFileToSupabase(file, groupId, setProgress);
 
-      // 2. Register the metadata with our own backend (M3 endpoint).
       setPhase("saving");
       const params = new URLSearchParams({
         file_name: file.name,
@@ -78,13 +73,6 @@ export function ResourceUpload({
     }
   }
 
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  }
-
   function onPick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
@@ -94,49 +82,31 @@ export function ResourceUpload({
   const busy = phase === "uploading" || phase === "saving";
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={onDrop}
-      style={{
-        border: `1.5px dashed ${dragOver ? T.red : T.border}`,
-        borderRadius: 12,
-        padding: "18px 16px",
-        textAlign: "center",
-        background: dragOver ? `${T.red}08` : T.bg2,
-        transition: "border-color 0.12s, background 0.12s",
-        marginBottom: 16,
-      }}
-    >
+    <div style={{ marginBottom: 16 }}>
       <input ref={inputRef} type="file" hidden onChange={onPick} />
 
-      {!busy && phase !== "error" && (
-        <>
-          <p style={{ fontSize: 13, color: T.text2, margin: "0 0 10px" }}>
-            Drag a file here, or
-          </p>
-          <button
-            onClick={() => inputRef.current?.click()}
-            style={{
-              padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: "none", background: T.red, color: "#fff", cursor: "pointer",
-            }}
-          >
-            + Upload file
-          </button>
-          <p style={{ fontSize: 11, color: T.text2, margin: "10px 0 0" }}>Max {MAX_MB}MB</p>
-        </>
-      )}
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        style={{
+          padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+          border: "none", background: T.red, color: "#fff",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.7 : 1,
+        }}
+      >
+        {phase === "uploading" ? `Uploading… ${progress}%` : phase === "saving" ? "Saving…" : "+ Upload file"}
+      </button>
 
-      {busy && (
-        <div style={{ maxWidth: 360, margin: "0 auto" }}>
+      {fileName && busy && (
+        <div style={{ maxWidth: 280, marginTop: 8 }}>
           <p style={{
-            fontSize: 12, color: T.text, margin: "0 0 8px",
+            fontSize: 12, color: T.text2, margin: "0 0 6px",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            {phase === "saving" ? "Saving…" : "Uploading…"} {fileName}
+            {fileName}
           </p>
-          <div style={{ height: 6, borderRadius: 4, background: T.bg3, overflow: "hidden" }}>
+          <div style={{ height: 5, borderRadius: 4, background: T.bg3, overflow: "hidden" }}>
             <div style={{
               height: "100%",
               width: `${phase === "saving" ? 100 : progress}%`,
@@ -144,19 +114,16 @@ export function ResourceUpload({
               transition: "width 0.15s",
             }} />
           </div>
-          <p style={{ fontSize: 11, color: T.text2, margin: "6px 0 0" }}>
-            {phase === "saving" ? "Registering with StudySync…" : `${progress}%`}
-          </p>
         </div>
       )}
 
       {phase === "error" && (
-        <div>
-          <p style={{ fontSize: 12, color: T.red, margin: "0 0 10px" }}>{error}</p>
+        <div style={{ marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: T.red, margin: "0 0 6px" }}>{error}</p>
           <button
             onClick={() => { setPhase("idle"); setError(null); }}
             style={{
-              padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+              padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
               border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",
             }}
           >
