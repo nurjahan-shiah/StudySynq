@@ -42,6 +42,18 @@ class ApiClient {
         body: body ? JSON.stringify(body) : undefined,
       });
 
+      // Expired/invalid session: clear it and bounce to login instead of silently
+      // rendering empty pages (otherwise groups/tasks/prefs just look "gone").
+      if (response.status === 401 && typeof window !== 'undefined') {
+        if (localStorage.getItem('ss_token')) {
+          ['ss_token', 'ss_user_id', 'ss_user_email', 'ss_user_role', 'ss_user_name']
+            .forEach((k) => localStorage.removeItem(k));
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login?expired=1';
+          }
+        }
+      }
+
       // 204 No Content (e.g. DELETE) and other empty responses have no JSON body.
       const text = await response.text();
       const data = text ? JSON.parse(text) : undefined;
