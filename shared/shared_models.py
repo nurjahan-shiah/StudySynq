@@ -282,3 +282,25 @@ class Task(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
+# ============================================================================
+# Notification Preferences (US-E.5 @author: Ahmed)
+# ============================================================================
+
+class NotificationPreference(Base):
+    """One row per (user, notification category) that the user has changed from
+    its default. Absence of a row means the category's default applies. Checked
+    before a notification is created, so disabled categories are never delivered.
+    """
+    __tablename__ = "notification_preferences"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'notification_type', name='unique_user_notif_pref'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # sessions | announcements | tasks | resources | group_activity
+    notification_type = Column(String(30), nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

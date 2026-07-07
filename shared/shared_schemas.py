@@ -260,6 +260,24 @@ class TaskUpdate(BaseModel):
 class TaskStatusUpdate(BaseModel):
     status: str
 
+# ============================================================================
+# Notification Preference Schemas (US-E.5 @author: Ahmed)
+# ============================================================================
+
+class NotificationPreferencesResponse(BaseModel):
+    sessions: bool
+    announcements: bool
+    tasks: bool
+    resources: bool
+    group_activity: bool
+
+class NotificationPreferencesUpdate(BaseModel):
+    sessions: Optional[bool] = None
+    announcements: Optional[bool] = None
+    tasks: Optional[bool] = None
+    resources: Optional[bool] = None
+    group_activity: Optional[bool] = None
+
 class TaskResponse(BaseModel):
     id: UUID
     group_id: UUID

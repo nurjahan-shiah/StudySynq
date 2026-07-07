@@ -28,10 +28,11 @@ const NAV: { id: string; label: string; icon: ReactNode; path: string }[] = [
   { id: "notifications",   label: "Notifications", icon: <BellIcon size={15} />, path: "/notifications" },
 ];
 
-function ProfilePanel({ user, theme, onToggleTheme, onClose, onLogout, onDeactivate }: {
+function ProfilePanel({ user, theme, onToggleTheme, onClose, onLogout, onDeactivate, onNotificationPrefs }: {
   user: UserInfo; theme: Theme;
   onToggleTheme: () => void; onClose: () => void;
   onLogout: () => void; onDeactivate: () => void;
+  onNotificationPrefs: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -92,7 +93,7 @@ function ProfilePanel({ user, theme, onToggleTheme, onClose, onLogout, onDeactiv
         <Row icon={theme === "dark" ? "☀️" : "🌙"} label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} onClick={onToggleTheme} />
 
         <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, padding: "16px 12px 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Account</p>
-        <Row icon="⚙" label="Settings" />
+        <Row icon="🔔" label="Notification preferences" onClick={onNotificationPrefs} />
         <Row icon="✉" label="Change email" />
         <Row icon="🔒" label="Change password" />
         <Row icon="↩" label="Log out" onClick={onLogout} />
@@ -213,6 +214,7 @@ export function ProfileButton() {
             onClose={() => setProfileOpen(false)}
             onLogout={handleLogout}
             onDeactivate={handleDeactivate}
+            onNotificationPrefs={() => { setProfileOpen(false); router.push("/notifications/preferences"); }}
           />
         </>
       )}

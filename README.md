@@ -65,7 +65,7 @@ StudySync/
 │       ├── login/            # Login
 │       ├── dashboard/        # User dashboard
 │       ├── resources/        # Resources page
-│       ├── notifications/    # Notification Centre full page (US-E.1)
+│       ├── notifications/    # Notification Centre + preferences (US-E.1/E.5)
 │       ├── groups/           # Group list + detail w/ Announcements & Tasks tabs (US-E.2/E.3)
 │       ├── tasks/            # Personal "My tasks" list (US-E.3)
 │       └── admin/            # Admin console
@@ -77,7 +77,8 @@ StudySync/
 │       ├── dashboard/        # Dashboard/token validation tests
 │       ├── notifications/    # Notification Centre tests (US-E.1)
 │       ├── announcements/    # Announcement Board tests (US-E.2)
-│       └── tasks/            # Task tracking tests (US-E.3)
+│       ├── tasks/            # Task tracking tests (US-E.3)
+│       └── preferences/      # Notification preferences tests (US-E.5)
 ├── docker-compose-microservices.yml
 └── README.md
 ```
@@ -196,6 +197,7 @@ bash tests/curl/dashboard/test_dashboard.sh
 bash tests/curl/notifications/test_notifications.sh
 bash tests/curl/announcements/test_announcements.sh
 bash tests/curl/tasks/test_tasks.sh
+bash tests/curl/preferences/test_preferences.sh
 ```
 
 ---
