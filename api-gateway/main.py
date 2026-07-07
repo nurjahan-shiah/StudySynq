@@ -63,6 +63,7 @@ ROUTE_MAPPING = {
     "/admin": "admin",
     "/recommendations": "recommendations",
     "/notifications": "notifications",
+    "/notification-preferences": "notifications",
     "/announcements": "announcements",
     "/tasks": "tasks",
 }

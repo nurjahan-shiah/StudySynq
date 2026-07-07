@@ -106,6 +106,15 @@ export interface UnreadCount {
   unread_count: number;
 }
 
+// US-E.5 — Notification Preferences
+export interface NotificationPreferences {
+  sessions: boolean;
+  announcements: boolean;
+  tasks: boolean;
+  resources: boolean;
+  group_activity: boolean;
+}
+
 // US-E.2 — Announcement Board
 export interface Announcement {
   id: string;
