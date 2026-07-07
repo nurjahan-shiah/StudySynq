@@ -47,6 +47,7 @@ services:
       - recommendations-service
       - notifications-service
       - announcements-service
+      - tasks-service
     environment:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       ALGORITHM: ${ALGORITHM:-HS256}
@@ -132,6 +133,8 @@ services:
       dockerfile: Dockerfile
     platform: linux/arm64
     container_name: studysync-sessions
+    env_file:
+      - .env
     ports:
       - '8004:8004'
     depends_on:
@@ -142,6 +145,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8004
+      GROQ_API_KEY: ${GROQ_API_KEY}
     volumes:
       - ./shared:/shared:ro
     networks:
@@ -285,6 +289,28 @@ services:
       - studysync-network
     restart: unless-stopped
 
+  # Tasks Service (Port 8011) — US-E.3
+  tasks-service:
+    build:
+      context: ./services/tasks-service
+      dockerfile: Dockerfile
+    container_name: studysync-tasks
+    ports:
+      - "8011:8011"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8011
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
   # ========================================================================
   # FRONTEND
   # ========================================================================
@@ -293,6 +319,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_SUPABASE_URL: https://kodfszmzawzydyusebjt.supabase.co
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
+        NEXT_PUBLIC_SUPABASE_BUCKET: resources
     container_name: studysync-frontend
     ports:
       - '3000:3000'

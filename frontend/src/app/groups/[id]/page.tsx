@@ -12,6 +12,8 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
 import { useGroup, useGroupMembers } from "@/lib/hooks";
+import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
+import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
 
 const T = {
   bg:     "var(--bg)",
@@ -23,10 +25,11 @@ const T = {
   red:    "var(--ss-red)",
 } as const;
 
-type Tab = "overview" | "announcements" | "sessions" | "resources" | "members";
+type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
   { id: "announcements", label: "Announcements" },
+  { id: "tasks",         label: "Tasks" },
   { id: "sessions",      label: "Sessions" },
   { id: "resources",     label: "Resources" },
   { id: "members",       label: "Members" },
@@ -123,12 +126,16 @@ export default function GroupDetailPage() {
           <AnnouncementBoard groupId={groupId} isLeader={isLeader} />
         )}
 
+        {tab === "tasks" && (
+          <GroupTasksPanel groupId={groupId} canManage={isLeader} userId={userId} />
+        )}
+
         {tab === "sessions" && (
           <LinkOut icon="▦" label="Sessions live on the Sessions page." href="/sessions" router={router} />
         )}
 
         {tab === "resources" && (
-          <LinkOut icon="⊟" label="Shared files live on the Resources page." href="/resources" router={router} />
+          <GroupResourcesPanel groupId={groupId} canManage={isLeader} userId={userId} />
         )}
 
         {tab === "members" && (

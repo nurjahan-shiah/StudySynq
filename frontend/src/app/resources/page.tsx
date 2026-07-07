@@ -5,6 +5,7 @@
 import { useState, useEffect, CSSProperties } from "react";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
+import { apiClient } from "@/lib/apiClient";
 import {
   useMyGroups,
   useMyResources,
@@ -276,7 +277,19 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
 
 // ── Resource Row ──────────────────────────────────────────────────────────────
 
-function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onPreview: () => void }) {
+function ResourceRow({
+  resource,
+  onPreview,
+  canDelete,
+  deleting,
+  onDelete,
+}: {
+  resource: ResourceWithGroup;
+  onPreview: () => void;
+  canDelete: boolean;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -309,20 +322,52 @@ function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onP
         {formatDate(resource.created_at)}
       </span>
 
-      <a
-        href={resource.file_url}
-        download={resource.file_name}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={e => e.stopPropagation()}
+      <div
         style={{
-          padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
-          background: `${T.red}18`, color: T.red, textDecoration: "none",
-          border: `1px solid ${T.red}30`, flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          flexShrink: 0,
         }}
       >
-        ↓ Download
-      </a>
+        <a
+          href={resource.file_url}
+          download={resource.file_name}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{
+            padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+            background: `${T.red}18`, color: T.red, textDecoration: "none",
+            border: `1px solid ${T.red}30`, flexShrink: 0,
+          }}
+        >
+          ↓ Download
+        </a>
+        {canDelete && (
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={e => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 7,
+              fontSize: 11,
+              fontWeight: 600,
+              background: deleting ? T.bg3 : "transparent",
+              color: deleting ? T.text2 : T.red,
+              border: `1px solid ${deleting ? T.border : `${T.red}55`}`,
+              cursor: deleting ? "not-allowed" : "pointer",
+              opacity: deleting ? 0.7 : 1,
+            }}
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -331,19 +376,76 @@ function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onP
 
 export default function ResourcesPage() {
   const [userId, setUserId] = useState("");
+  const [userRole, setUserRole] = useState("");
   const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "pdf" | "image" | "other">("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setUserId(localStorage.getItem("ss_user_id") ?? "");
+    setUserRole(localStorage.getItem("ss_user_role") ?? "");
   }, []);
 
   const { data: myGroups, loading: groupsLoading } = useMyGroups(userId);
-  const { data: resources, loading: resLoading, error } = useMyResources(myGroups);
+  const {
+    data: resources,
+    loading: resLoading,
+    error,
+    refetch: refetchResources,
+  } = useMyResources(myGroups);
 
   const loading = groupsLoading || resLoading;
   const isLeader = myGroups.some((g: MyGroup) => g.my_role === "leader");
+
+  const canDeleteResource = (resource: ResourceWithGroup): boolean => {
+    if (userRole === "admin") {
+      return true;
+    }
+
+    if (String(resource.uploaded_by) === String(userId)) {
+      return true;
+    }
+
+    const group = myGroups.find(
+      (g: MyGroup) => g.id === resource.group_id
+    );
+
+    return group?.my_role === "leader";
+  };
+
+  const handleDeleteResource = async (
+    resource: ResourceWithGroup
+  ) => {
+    const confirmed = window.confirm(
+      `Delete "${resource.file_name}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(resource.id);
+    setDeleteError(null);
+
+    const response = await apiClient.delete<void>(
+      `/resources/${resource.id}`
+    );
+
+    if (response.error) {
+      setDeleteError(response.error);
+      setDeletingId(null);
+      return;
+    }
+
+    if (preview?.id === resource.id) {
+      setPreview(null);
+    }
+
+    await refetchResources();
+    setDeletingId(null);
+  };
 
   const filtered = resources.filter(r => {
     const matchSearch = r.file_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -405,6 +507,23 @@ export default function ResourcesPage() {
           </div>
         </div>
 
+        {deleteError && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: `1px solid ${T.red}55`,
+              background: `${T.red}12`,
+              color: T.red,
+              fontSize: 12,
+            }}
+          >
+            {deleteError}
+          </div>
+        )}
+
         {/* Resource list */}
         <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden" }}>
           {/* List header */}
@@ -442,7 +561,14 @@ export default function ResourcesPage() {
           )}
 
           {!loading && filtered.map(r => (
-            <ResourceRow key={r.id} resource={r} onPreview={() => setPreview(r)} />
+            <ResourceRow
+              key={r.id}
+              resource={r}
+              onPreview={() => setPreview(r)}
+              canDelete={canDeleteResource(r)}
+              deleting={deletingId === r.id}
+              onDelete={() => handleDeleteResource(r)}
+            />
           ))}
         </div>
 

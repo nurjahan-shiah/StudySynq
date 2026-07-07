@@ -24,6 +24,7 @@ const NAV: { id: string; label: string; icon: ReactNode; path: string }[] = [
   { id: "sessions",        label: "Sessions",     icon: "▦", path: "/sessions"        },
   { id: "resources",       label: "Resources",    icon: "⊟", path: "/resources"       },
   { id: "recommendations", label: "Recommended",  icon: "✦", path: "/recommendations" },
+  { id: "tasks",           label: "My tasks",     icon: "✓", path: "/tasks"            },
   { id: "notifications",   label: "Notifications", icon: <BellIcon size={15} />, path: "/notifications" },
 ];
 

@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
 import sys
+import os
+import httpx
 sys.path.append("/shared")
 from shared_models import StudySession, Group, GroupMembership, GroupMembershipRole, Base
 from shared_database import engine, get_db
@@ -182,6 +184,58 @@ async def cancel_session(session_id: str, db: Session = Depends(get_db),
     db.commit()
     db.refresh(session)
     return session
+
+# US-G.2 @author: Uzma Alam
+@app.post("/sessions/{session_id}/summarize", status_code=201)
+async def summarize_session_notes(
+    session_id: str,
+    notes: str,
+    db: Session = Depends(get_db),
+    
+):
+    """Summarize session notes using AI and save as a group resource."""
+    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.is_cancelled:
+        raise HTTPException(status_code=400, detail="Cannot summarize a cancelled session")
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Groq API key not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"""Summarize these session notes into:
+1. A brief summary 
+2. Key points 
+3. Action items 
+
+Notes:
+{notes}"""
+                    }
+                ],
+                "max_tokens": 1024,
+            },
+            timeout=30.0,
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Failed to get AI summary")
+
+    summary = response.json()["choices"][0]["message"]["content"]
+
+    return {"session_id": session_id, "summary": summary}
 
 @app.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(session_id: str, db: Session = Depends(get_db),
