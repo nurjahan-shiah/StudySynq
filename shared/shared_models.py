@@ -99,6 +99,7 @@ class StudySession(Base):
     description = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_cancelled    = Column(Boolean, default=False)
 
     # Relationships
     group = relationship("Group", back_populates="sessions")
@@ -254,3 +255,52 @@ class Announcement(Base):
     is_pinned = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ============================================================================
+# Tasks (US-E.3 @author: Ahmed)
+# ============================================================================
+
+class Task(Base):
+    """A task a group leader assigns to a specific group member.
+
+    Creating one triggers a single-user notification to the assignee via
+    shared_notifications.create_notification. The assignee (or the group leader)
+    can update its status; completing it stamps completed_at.
+    """
+    __tablename__ = "tasks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="todo", nullable=False, index=True)   # todo | in_progress | completed
+    priority = Column(String(10), default="medium", nullable=False)           # low | medium | high
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+# ============================================================================
+# Notification Preferences (US-E.5 @author: Ahmed)
+# ============================================================================
+
+class NotificationPreference(Base):
+    """One row per (user, notification category) that the user has changed from
+    its default. Absence of a row means the category's default applies. Checked
+    before a notification is created, so disabled categories are never delivered.
+    """
+    __tablename__ = "notification_preferences"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'notification_type', name='unique_user_notif_pref'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # sessions | announcements | tasks | resources | group_activity
+    notification_type = Column(String(30), nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

@@ -15,14 +15,18 @@ Service URLs (internal to Docker network):
 - recommendations-service: http://recommendations-service:8008
 - notifications-service: http://notifications-service:8009
 - announcements-service: http://announcements-service:8010
+- tasks-service: http://tasks-service:8011
 """
 
 import os
-import httpx
-from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, Response
-from fastapi.middleware.cors import CORSMiddleware
+import re
 from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from jose import JWTError, jwt
 
 # ============================================================================
 # Configuration
@@ -39,9 +43,20 @@ SERVICE_URLS = {
     "recommendations": "http://recommendations-service:8008",
     "notifications": "http://notifications-service:8009",
     "announcements": "http://announcements-service:8010",
+    "tasks": "http://tasks-service:8011",
 }
 
-# Routes that don't require authentication
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "your-secret-key-change-in-production",
+)
+
+ALGORITHM = os.getenv(
+    "ALGORITHM",
+    "HS256",
+)
+
+# Routes that do not require authentication.
 PUBLIC_ROUTES = {
     "/auth/register",
     "/auth/login",
@@ -53,7 +68,7 @@ PUBLIC_ROUTES = {
     "/openapi.json",
 }
 
-# Routes grouped by service
+# Routes grouped by service.
 ROUTE_MAPPING = {
     "/auth": "auth",
     "/users": "users",
@@ -64,37 +79,41 @@ ROUTE_MAPPING = {
     "/admin": "admin",
     "/recommendations": "recommendations",
     "/notifications": "notifications",
+    "/notification-preferences": "notifications",
     "/announcements": "announcements",
+    "/tasks": "tasks",
 }
 
 # ============================================================================
 # Lifespan
 # ============================================================================
 
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown logic."""
-    print("🚀 API Gateway starting...")
+    """Run startup and shutdown logic."""
+    print("API Gateway starting...")
     print(f"Service URLs: {SERVICE_URLS}")
     yield
-    print("🛑 API Gateway shutting down...")
+    print("API Gateway shutting down...")
 
 
 app = FastAPI(
     title="StudySync API Gateway",
     description="Routes requests to StudySync microservices",
-    version="1.0.0",
-    lifespan=lifespan
+    version="1.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        o.strip()
-        for o in os.getenv(
+        origin.strip()
+        for origin in os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:3000"
+            "http://localhost:3000",
         ).split(",")
-        if o.strip()
+        if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -105,33 +124,113 @@ app.add_middleware(
 # Helper Functions
 # ============================================================================
 
+
+def validate_access_token(
+    authorization: str | None,
+) -> dict:
+    """
+    Validate a Bearer access token for a protected route.
+
+    Returns the authenticated user's ID, email, and role.
+    Raises HTTPException when the authorization header or token is invalid.
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    scheme, separator, token = authorization.partition(" ")
+
+    if (
+        not separator
+        or scheme.lower() != "bearer"
+        or not token.strip()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = jwt.decode(
+            token.strip(),
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+        )
+
+        user_id = payload.get("user_id") or payload.get("sub")
+        email = payload.get("email")
+        role = payload.get("role")
+
+        if not user_id or not email or not role:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired access token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return {
+            "user_id": str(user_id),
+            "email": str(email),
+            "role": str(role),
+        }
+
+    except JWTError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+
+
 def get_service_for_route(path: str) -> str:
     """
-    Determine which service handles this route.
-    Example: /groups/123 → "groups"
-    Specific sub-paths take priority over the generic prefix match.
-    """
-    import re
+    Determine which service handles a route.
 
-    # /groups/{id}/resources[/*] → resources-service
-    if re.match(r"^/groups/[^/]+/resources(/.*)?$", path):
+    Specific nested routes take priority over generic prefix matching.
+    """
+
+    # /groups/{id}/resources[/*] -> resources-service
+    if re.match(
+        r"^/groups/[^/]+/resources(/.*)?$",
+        path,
+    ):
         return "resources"
 
-    # /groups/{id}/sessions[/*] → sessions-service (session routes live there, not in groups-service)
-    if re.match(r"^/groups/[^/]+/sessions(/.*)?$", path):
+    # /groups/{id}/sessions[/*] -> sessions-service
+    if re.match(
+        r"^/groups/[^/]+/sessions(/.*)?$",
+        path,
+    ):
         return "sessions"
 
-    # /groups/{id}/announcements[/*] → announcements-service
-    if re.match(r"^/groups/[^/]+/announcements(/.*)?$", path):
+    # /groups/{id}/announcements[/*] -> announcements-service
+    if re.match(
+        r"^/groups/[^/]+/announcements(/.*)?$",
+        path,
+    ):
         return "announcements"
 
+    # /groups/{id}/tasks[/*] -> tasks-service
+    if re.match(
+        r"^/groups/[^/]+/tasks(/.*)?$",
+        path,
+    ):
+        return "tasks"
+
     for route_prefix, service in ROUTE_MAPPING.items():
-        if path.startswith(route_prefix):
+        if (
+            path == route_prefix
+            or path.startswith(f"{route_prefix}/")
+        ):
             return service
 
     raise HTTPException(
-        status_code=404,
-        detail="Route not found"
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Route not found",
     )
 
 
@@ -140,25 +239,33 @@ async def forward_request(
     method: str,
     path: str,
     request: Request,
-    body: bytes = None
+    body: bytes | None = None,
+    authenticated_user: dict | None = None,
 ) -> dict:
-    """
-    Forward HTTP request to a microservice and return response.
-    """
+    """Forward an HTTP request to a microservice."""
     service_url = SERVICE_URLS.get(service)
 
     if not service_url:
         raise HTTPException(
-            status_code=500,
-            detail=f"Service {service} not configured"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Service {service} not configured",
         )
 
-    # Build full URL to forward
     target_url = f"{service_url}{path}"
 
-    # Prepare headers (forward auth header if present)
     headers = dict(request.headers)
-    headers.pop("host", None)  # Remove host header (service will set its own)
+    headers.pop("host", None)
+
+    # Remove client-supplied identity headers to prevent spoofing.
+    headers.pop("x-user-id", None)
+    headers.pop("x-user-email", None)
+    headers.pop("x-user-role", None)
+
+    # Add identity headers only after the JWT has been validated.
+    if authenticated_user:
+        headers["X-User-ID"] = authenticated_user["user_id"]
+        headers["X-User-Email"] = authenticated_user["email"]
+        headers["X-User-Role"] = authenticated_user["role"]
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -176,114 +283,111 @@ async def forward_request(
                 "content": response.content,
             }
 
-    except httpx.ConnectError:
+    except httpx.ConnectError as error:
         raise HTTPException(
-            status_code=503,
-            detail=f"Service {service} is unavailable"
-        )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Service {service} is unavailable",
+        ) from error
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         raise HTTPException(
-            status_code=504,
-            detail=f"Service {service} timeout"
-        )
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Service {service} timeout",
+        ) from error
 
-    except Exception as e:
-        print(f"Error forwarding to {service}: {str(e)}")
+    except Exception as error:
+        print(f"Error forwarding to {service}: {error}")
 
         raise HTTPException(
-            status_code=500,
-            detail="Internal gateway error"
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal gateway error",
+        ) from error
+
 
 # ============================================================================
 # Routes
 # ============================================================================
 
+
 @app.get("/")
 async def health():
-    """Health check endpoint."""
+    """Return the API Gateway health status."""
     return {
         "status": "ok",
         "service": "api-gateway",
-        "services": list(SERVICE_URLS.keys())
+        "services": list(SERVICE_URLS.keys()),
     }
 
 
 @app.api_route(
     "/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH"]
+    methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "PATCH",
+    ],
 )
-async def gateway(path: str, request: Request):
+async def gateway(
+    path: str,
+    request: Request,
+):
     """
-    Main gateway route: accepts all HTTP methods and forwards to appropriate service.
+    Accept requests and forward them to the appropriate microservice.
 
     Flow:
-    1. Determine which service handles this route
-    2. Check if authentication is required
-    3. Forward request to service
-    4. Return response back to client
+    1. Determine which service handles the route.
+    2. Validate authentication for protected routes.
+    3. Forward the request to the service.
+    4. Return the service response to the client.
     """
-
-    # Full path with query string
     full_path = f"/{path}"
 
-    if request.query_params:
-        full_path += f"?{request.query_params}"
-
-    # Get service for this route
     try:
-        service = get_service_for_route(f"/{path}")
+        service = get_service_for_route(full_path)
 
-    except HTTPException:
-        # If no service found, return 404
+    except HTTPException as error:
         raise HTTPException(
-            status_code=404,
-            detail="Endpoint not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Endpoint not found",
+        ) from error
+
+    authenticated_user = None
+
+    if full_path not in PUBLIC_ROUTES:
+        authenticated_user = validate_access_token(
+            request.headers.get("authorization"),
         )
 
-    # Check if route requires authentication
-    if full_path not in PUBLIC_ROUTES and not any(
-        full_path.startswith(pr)
-        for pr in PUBLIC_ROUTES
-    ):
-        # Most routes require auth - check for Bearer token
-        auth_header = request.headers.get("authorization")
-
-        if not auth_header:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing authorization header",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-    # Read request body if present
     body = (
         await request.body()
         if request.method != "GET"
         else None
     )
 
-    # Forward request to service
     response = await forward_request(
         service=service,
         method=request.method,
-        path=f"/{path}",
+        path=full_path,
         request=request,
-        body=body
+        body=body,
+        authenticated_user=authenticated_user,
     )
 
-    # Return response to client — proxy bytes directly to avoid re-serialization errors
     excluded_headers = {
         "transfer-encoding",
         "content-encoding",
-        "content-length"
+        "content-length",
+        "content-type",
+        "date",
+        "server",
     }
 
     headers = {
-        k: v
-        for k, v in response["headers"].items()
-        if k.lower() not in excluded_headers
+        key: value
+        for key, value in response["headers"].items()
+        if key.lower() not in excluded_headers
     }
 
     return Response(
@@ -291,24 +395,27 @@ async def gateway(path: str, request: Request):
         content=response["content"],
         media_type=response["headers"].get(
             "content-type",
-            "application/json"
+            "application/json",
         ),
         headers=headers,
     )
+
 
 # ============================================================================
 # Error Handlers
 # ============================================================================
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(
     request: Request,
-    exc: HTTPException
+    exc: HTTPException,
 ):
-    """Handle HTTP exceptions."""
+    """Return HTTP exceptions as JSON responses."""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail}
+        content={"detail": exc.detail},
+        headers=exc.headers,
     )
 
 
@@ -318,5 +425,5 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000
+        port=8000,
     )

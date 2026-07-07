@@ -30,20 +30,36 @@ echo "  DASHBOARD TESTS"
 echo "=============================="
 
 # ------------------------------------------
-# Setup: register a fresh user and grab token
+# Setup: register or login to get token
 # ------------------------------------------
+TEST_EMAIL="dashboard_test@yorku.ca"
 echo ""
-echo "[ setup ] Registering dashboard_test@yorku.ca..."
+echo "[ setup ] Registering $TEST_EMAIL..."
+
 SETUP=$(curl -s -X POST "$BASE_URL/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Dashboard User",
-    "email": "dashboard_test@yorku.ca",
+    "email": "'"$TEST_EMAIL"'",
     "password": "Password1",
     "role": "student"
   }')
 
 TOKEN=$(echo "$SETUP" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+# If registration failed (email already exists), fall back to login
+if [ -z "$TOKEN" ]; then
+  if echo "$SETUP" | grep -q "already registered"; then
+    echo "  Already registered — logging in instead..."
+    LOGIN=$(curl -s -X POST "$BASE_URL/auth/login" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "'"$TEST_EMAIL"'",
+        "password": "Password1"
+      }')
+    TOKEN=$(echo "$LOGIN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+  fi
+fi
 
 if [ -z "$TOKEN" ]; then
   echo "  ⚠️  Setup failed — could not get token. Is the server running?"

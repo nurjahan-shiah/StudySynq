@@ -20,7 +20,11 @@ sys.path.append("/shared")
 from shared_models import Notification, NotificationType, Base
 from shared_database import engine, get_db
 from shared_auth import get_current_user
-from shared_schemas import NotificationResponse, UnreadCountResponse
+from shared_schemas import (
+    NotificationResponse, UnreadCountResponse,
+    NotificationPreferencesResponse, NotificationPreferencesUpdate,
+)
+from shared_notifications import get_effective_preferences, set_preferences
 
 
 def init_db():
@@ -72,6 +76,30 @@ def _ensure_self_or_admin(path_user_id: UUID, current_user: dict):
 @app.get("/notifications/health")
 async def health():
     return {"status": "ok", "service": "notifications-service"}
+
+
+# ----------------------------------------------------------------------------
+# Notification preferences (US-E.5) — a user controls which categories they get.
+# ----------------------------------------------------------------------------
+
+@app.get("/notification-preferences/{user_id}", response_model=NotificationPreferencesResponse)
+async def get_preferences(user_id: UUID, db: Session = Depends(get_db),
+                          current_user: dict = Depends(get_current_user)):
+    """Get a user's notification preferences (the user themselves, or an admin)."""
+    if str(user_id) != str(current_user["user_id"]) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed to view these preferences")
+    return NotificationPreferencesResponse(**get_effective_preferences(db, user_id))
+
+
+@app.patch("/notification-preferences/{user_id}", response_model=NotificationPreferencesResponse)
+async def update_preferences(user_id: UUID, data: NotificationPreferencesUpdate,
+                             db: Session = Depends(get_db),
+                             current_user: dict = Depends(get_current_user)):
+    """Update a user's notification preferences (only your own)."""
+    if str(user_id) != str(current_user["user_id"]):
+        raise HTTPException(status_code=403, detail="You can only update your own preferences")
+    updates = data.dict(exclude_unset=True)
+    return NotificationPreferencesResponse(**set_preferences(db, user_id, updates))
 
 
 @app.get("/notifications/{user_id}", response_model=List[NotificationResponse])

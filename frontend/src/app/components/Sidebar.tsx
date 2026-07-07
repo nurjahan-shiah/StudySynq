@@ -7,6 +7,7 @@ import { Logo } from './Logo';
 import { BellIcon } from './BellIcon';
 
 type Theme = 'dark' | 'light';
+
 interface UserInfo {
   name: string;
   email: string;
@@ -22,17 +23,53 @@ const T = {
   red: 'var(--ss-red)',
 } as const;
 
-const NAV: { id: string; label: string; icon: ReactNode; path: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⊞', path: '/dashboard' },
-  { id: 'groups', label: 'Study groups', icon: '⚇', path: '/groups' },
-  { id: 'courses', label: 'Courses', icon: '◎', path: '/courses' },
-  { id: 'sessions', label: 'Sessions', icon: '▦', path: '/sessions' },
-  { id: 'resources', label: 'Resources', icon: '⊟', path: '/resources' },
+const NAV: {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  path: string;
+}[] = [
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: '⊞',
+    path: '/dashboard',
+  },
+  {
+    id: 'groups',
+    label: 'Study groups',
+    icon: '⚇',
+    path: '/groups',
+  },
+  {
+    id: 'courses',
+    label: 'Courses',
+    icon: '◎',
+    path: '/courses',
+  },
+  {
+    id: 'sessions',
+    label: 'Sessions',
+    icon: '▦',
+    path: '/sessions',
+  },
+  {
+    id: 'resources',
+    label: 'Resources',
+    icon: '⊟',
+    path: '/resources',
+  },
   {
     id: 'recommendations',
     label: 'Recommended',
     icon: '✦',
     path: '/recommendations',
+  },
+  {
+    id: 'tasks',
+    label: 'My tasks',
+    icon: '✓',
+    path: '/tasks',
   },
   {
     id: 'notifications',
@@ -49,6 +86,7 @@ function ProfilePanel({
   onClose,
   onLogout,
   onDeactivate,
+  onNotificationPrefs,
 }: {
   user: UserInfo;
   theme: Theme;
@@ -56,16 +94,22 @@ function ProfilePanel({
   onClose: () => void;
   onLogout: () => void;
   onDeactivate: () => void;
+  onNotificationPrefs: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handle(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node))
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
+      }
     }
+
     document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
+
+    return () => {
+      document.removeEventListener('mousedown', handle);
+    };
   }, [onClose]);
 
   const initial = (user.name || user.email || '?')[0].toUpperCase();
@@ -97,12 +141,23 @@ function ProfilePanel({
         fontSize: 13,
         textAlign: 'left',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = T.bg3)}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = T.bg3;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
     >
-      <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>
+      <span
+        style={{
+          fontSize: 16,
+          width: 20,
+          textAlign: 'center',
+        }}
+      >
         {icon}
       </span>
+
       {label}
     </button>
   );
@@ -133,9 +188,16 @@ function ProfilePanel({
           justifyContent: 'space-between',
         }}
       >
-        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: T.text,
+          }}
+        >
           Profile
         </span>
+
         <button
           onClick={onClose}
           style={{
@@ -176,6 +238,7 @@ function ProfilePanel({
         >
           {initial}
         </div>
+
         <p
           style={{
             fontSize: 15,
@@ -186,9 +249,17 @@ function ProfilePanel({
         >
           {user.name || 'Guest'}
         </p>
-        <p style={{ fontSize: 12, color: T.text2, margin: '0 0 8px' }}>
+
+        <p
+          style={{
+            fontSize: 12,
+            color: T.text2,
+            margin: '0 0 8px',
+          }}
+        >
           {user.email || 'Not signed in'}
         </p>
+
         {user.role && (
           <span
             style={{
@@ -205,7 +276,12 @@ function ProfilePanel({
         )}
       </div>
 
-      <div style={{ padding: '12px 8px', flex: 1 }}>
+      <div
+        style={{
+          padding: '12px 8px',
+          flex: 1,
+        }}
+      >
         <p
           style={{
             fontSize: 10,
@@ -218,6 +294,7 @@ function ProfilePanel({
         >
           Appearance
         </p>
+
         <Row
           icon={theme === 'dark' ? '☀️' : '🌙'}
           label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
@@ -236,9 +313,17 @@ function ProfilePanel({
         >
           Account
         </p>
-        <Row icon="⚙" label="Settings" />
+
+        <Row
+          icon="🔔"
+          label="Notification preferences"
+          onClick={onNotificationPrefs}
+        />
+
         <Row icon="✉" label="Change email" />
+
         <Row icon="🔒" label="Change password" />
+
         <Row icon="↩" label="Log out" onClick={onLogout} />
 
         <div
@@ -257,7 +342,12 @@ function ProfilePanel({
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.border}` }}>
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: `1px solid ${T.border}`,
+        }}
+      >
         <p
           style={{
             fontSize: 11,
@@ -280,10 +370,10 @@ export function Sidebar() {
   const pathname = usePathname();
 
   const activeId =
-    NAV.find((n) =>
-      n.path !== '/dashboard'
-        ? pathname.startsWith(n.path)
-        : pathname === n.path,
+    NAV.find((item) =>
+      item.path !== '/dashboard'
+        ? pathname.startsWith(item.path)
+        : pathname === item.path,
     )?.id ?? 'dashboard';
 
   return (
@@ -298,15 +388,25 @@ export function Sidebar() {
         padding: '0 10px',
       }}
     >
-      <div style={{ padding: '18px 6px 14px' }}>
+      <div
+        style={{
+          padding: '18px 6px 14px',
+        }}
+      >
         <Logo iconSize={32} wordmarkSize="1.2rem" linked={false} />
       </div>
 
       <nav
-        style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          flex: 1,
+        }}
       >
         {NAV.map((item) => {
           const isActive = item.id === activeId;
+
           return (
             <button
               key={item.id}
@@ -339,7 +439,14 @@ export function Sidebar() {
               >
                 {item.icon}
               </span>
-              <span style={{ flex: 1 }}>{item.label}</span>
+
+              <span
+                style={{
+                  flex: 1,
+                }}
+              >
+                {item.label}
+              </span>
             </button>
           );
         })}
@@ -351,13 +458,22 @@ export function Sidebar() {
 // ── ProfileButton — drop this in the top-right of any page's main area ────────
 
 export function ProfileButton() {
+  const router = useRouter();
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
-  const [user, setUser] = useState<UserInfo>({ name: '', email: '', role: '' });
+
+  const [user, setUser] = useState<UserInfo>({
+    name: '',
+    email: '',
+    role: '',
+  });
 
   useEffect(() => {
     const stored = (localStorage.getItem('ss-theme') as Theme) || 'dark';
+
     setTheme(stored);
+
     setUser({
       name: localStorage.getItem('ss_user_name') ?? '',
       email: localStorage.getItem('ss_user_email') ?? '',
@@ -367,8 +483,11 @@ export function ProfileButton() {
 
   function toggleTheme() {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';
+
     setTheme(next);
+
     document.documentElement.setAttribute('data-theme', next);
+
     localStorage.setItem('ss-theme', next);
   }
 
@@ -420,6 +539,7 @@ export function ProfileButton() {
               zIndex: 199,
             }}
           />
+
           <ProfilePanel
             user={user}
             theme={theme}
@@ -427,6 +547,10 @@ export function ProfileButton() {
             onClose={() => setProfileOpen(false)}
             onLogout={handleLogout}
             onDeactivate={handleDeactivate}
+            onNotificationPrefs={() => {
+              setProfileOpen(false);
+              router.push('/notifications/preferences');
+            }}
           />
         </>
       )}

@@ -7,7 +7,14 @@ Defines the contract between services and clients.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _coerce_date_only(v):
+    """Accept a date-only 'YYYY-MM-DD' (e.g. from an <input type=date>) as midnight."""
+    if isinstance(v, str) and len(v) == 10 and v.count("-") == 2:
+        return v + "T00:00:00"
+    return v
 
 # ============================================================================
 # Auth Schemas
@@ -226,6 +233,67 @@ class AnnouncementResponse(BaseModel):
     is_pinned: bool
     created_at: datetime
     updated_at: datetime
+
+# ============================================================================
+# Task Schemas (US-E.3 @author: Ahmed)
+# ============================================================================
+
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: str = "medium"
+    assigned_to: UUID
+
+    _coerce_due = field_validator("due_date", mode="before")(_coerce_date_only)
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    status: Optional[str] = None
+
+    _coerce_due = field_validator("due_date", mode="before")(_coerce_date_only)
+
+class TaskStatusUpdate(BaseModel):
+    status: str
+
+# ============================================================================
+# Notification Preference Schemas (US-E.5 @author: Ahmed)
+# ============================================================================
+
+class NotificationPreferencesResponse(BaseModel):
+    sessions: bool
+    announcements: bool
+    tasks: bool
+    resources: bool
+    group_activity: bool
+
+class NotificationPreferencesUpdate(BaseModel):
+    sessions: Optional[bool] = None
+    announcements: Optional[bool] = None
+    tasks: Optional[bool] = None
+    resources: Optional[bool] = None
+    group_activity: Optional[bool] = None
+
+class TaskResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    group_name: str
+    assigned_by: UUID
+    assigned_by_name: str
+    assigned_to: UUID
+    assigned_to_name: str
+    title: str
+    description: Optional[str] = None
+    status: str
+    priority: str
+    due_date: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
 
 # ============================================================================
 # Error Schemas
