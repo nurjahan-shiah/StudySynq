@@ -74,6 +74,10 @@ services:
     environment:
       DATABASE_URL: postgresql://admin:secret@db:5432/studysync
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       LOG_LEVEL: info
       SERVICE_PORT: 8001
     volumes:
@@ -331,7 +335,7 @@ services:
       - api-gateway
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
-      NODE_ENV: development
+      NODE_ENV: production
     networks:
       - studysync-network
     restart: unless-stopped

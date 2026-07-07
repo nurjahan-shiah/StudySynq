@@ -1,4 +1,4 @@
-"""
+﻿"""
 shared/auth.py
 JWT token generation and verification used across all microservices.
 Centralized so token format is consistent everywhere.
@@ -9,28 +9,52 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8h — covers a work/demo session (was 30m)
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "your-secret-key-change-in-production",
+)
+
+ALGORITHM = os.getenv(
+    "ALGORITHM",
+    "HS256",
+)
+
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv(
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "480",
+    )
+)
+
+REFRESH_TOKEN_EXPIRE_DAYS = int(
+    os.getenv(
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "7",
+    )
+)
 
 # Password hashing context
 pwd_context = CryptContext(
     schemes=["bcrypt"],
-    deprecated="auto"
+    deprecated="auto",
 )
 
 # ============================================================================
 # Password Utilities
 # ============================================================================
+
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password."""
@@ -39,56 +63,97 @@ def hash_password(password: str) -> str:
 
 def verify_password(
     plain_password: str,
-    hashed_password: str
+    hashed_password: str,
 ) -> bool:
     """Verify a plaintext password against a hash."""
     return pwd_context.verify(
         plain_password,
-        hashed_password
+        hashed_password,
     )
+
 
 # ============================================================================
 # JWT Utilities
 # ============================================================================
 
+
 def create_access_token(
     user_id: UUID,
     user_email: str,
     user_role: str,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Create a JWT token for a user.
-    Token payload includes user_id, email, and role.
+    Create an access JWT token for a user.
+
+    The token payload includes the user ID, email, role,
+    token type, and expiration time.
     """
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES,
         )
 
     to_encode = {
         "sub": str(user_id),
         "email": user_email,
         "role": user_role,
-        "exp": expire
+        "type": "access",
+        "exp": expire,
     }
 
-    encoded_jwt = jwt.encode(
+    return jwt.encode(
         to_encode,
         SECRET_KEY,
-        algorithm=ALGORITHM
+        algorithm=ALGORITHM,
     )
 
-    return encoded_jwt
 
-
-def decode_token(token: str) -> dict:
+def create_refresh_token(
+    user_id: UUID,
+    user_email: str,
+    user_role: str,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
     """
-    Decode and validate a JWT token.
-    Returns token payload if valid.
-    Raises HTTPException if invalid.
+    Create a refresh JWT token for a user.
+
+    Refresh tokens live longer than access tokens and are
+    used to request a new access token.
+    """
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(
+            days=REFRESH_TOKEN_EXPIRE_DAYS,
+        )
+
+    to_encode = {
+        "sub": str(user_id),
+        "email": user_email,
+        "role": user_role,
+        "type": "refresh",
+        "exp": expire,
+    }
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def _decode_token(
+    token: str,
+    expected_type: str,
+) -> dict:
+    """
+    Decode and validate an access or refresh JWT token.
+
+    Verifies that the token contains the required user claims
+    and matches the expected token type.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -100,15 +165,16 @@ def decode_token(token: str) -> dict:
         payload = jwt.decode(
             token,
             SECRET_KEY,
-            algorithms=[ALGORITHM]
+            algorithms=[ALGORITHM],
         )
 
-        user_id: str = (
+        user_id = (
             payload.get("user_id")
             or payload.get("sub")
         )
-        email: str = payload.get("email")
-        role: str = payload.get("role")
+        email = payload.get("email")
+        role = payload.get("role")
+        token_type = payload.get("type")
 
         if (
             user_id is None
@@ -117,14 +183,52 @@ def decode_token(token: str) -> dict:
         ):
             raise credentials_exception
 
+        # Older access tokens may not contain a type claim.
+        # They remain valid until they naturally expire.
+        if expected_type == "access":
+            if token_type not in (None, "access"):
+                raise credentials_exception
+        elif token_type != expected_type:
+            raise credentials_exception
+
         return {
-            "user_id": UUID(user_id),
-            "email": email,
-            "role": role
+            "user_id": UUID(str(user_id)),
+            "email": str(email),
+            "role": str(role),
+            "type": token_type or expected_type,
         }
 
-    except (JWTError, ValueError, TypeError):
-        raise credentials_exception
+    except HTTPException:
+        raise
+
+    except (JWTError, ValueError, TypeError) as error:
+        raise credentials_exception from error
+
+
+def decode_token(token: str) -> dict:
+    """
+    Decode and validate an access JWT token.
+
+    Returns the authenticated user's token information.
+    """
+    return _decode_token(
+        token,
+        expected_type="access",
+    )
+
+
+def decode_refresh_token(token: str) -> dict:
+    """
+    Decode and validate a refresh JWT token.
+
+    Returns token information when the token is valid and
+    has the refresh-token type.
+    """
+    return _decode_token(
+        token,
+        expected_type="refresh",
+    )
+
 
 # ============================================================================
 # FastAPI Dependencies
@@ -136,11 +240,13 @@ security = HTTPBearer(auto_error=False)
 def get_current_user(
     credentials: Optional[
         HTTPAuthorizationCredentials
-    ] = Depends(security)
-):
+    ] = Depends(security),
+) -> dict:
     """
     FastAPI dependency for protected routes.
-    Validates JWT token and returns user info.
+
+    Validates the access token and returns authenticated
+    user information.
 
     Usage:
         @app.get("/protected")
@@ -158,6 +264,7 @@ def get_current_user(
 
     return decode_token(credentials.credentials)
 
+
 # ============================================================================
 # Role-Based Access Control
 # ============================================================================
@@ -171,10 +278,11 @@ VALID_USER_ROLES = frozenset({
 
 def require_roles(*allowed_roles: str):
     """
-    Create a FastAPI dependency that permits only the specified user roles.
+    Create a dependency that permits only specified roles.
 
     Authentication is handled by get_current_user.
-    Authenticated users without an allowed role receive 403 Forbidden.
+    Authenticated users without an allowed role receive
+    403 Forbidden.
 
     Usage:
         admin_only = require_roles("admin")
@@ -196,7 +304,7 @@ def require_roles(*allowed_roles: str):
 
     if not normalized_roles:
         raise ValueError(
-            "At least one allowed role must be provided"
+            "At least one allowed role must be provided",
         )
 
     invalid_roles = (
@@ -205,25 +313,25 @@ def require_roles(*allowed_roles: str):
 
     if invalid_roles:
         invalid_list = ", ".join(
-            sorted(invalid_roles)
+            sorted(invalid_roles),
         )
 
         raise ValueError(
-            f"Unknown user role(s): {invalid_list}"
+            f"Unknown user role(s): {invalid_list}",
         )
 
     def role_dependency(
         current_user: dict = Depends(
-            get_current_user
-        )
+            get_current_user,
+        ),
     ) -> dict:
         current_role = str(
-            current_user.get("role", "")
+            current_user.get("role", ""),
         ).strip().lower()
 
         if current_role not in normalized_roles:
             allowed_list = ", ".join(
-                sorted(normalized_roles)
+                sorted(normalized_roles),
             )
 
             raise HTTPException(
