@@ -351,6 +351,32 @@ export function useAdminStats() {
   return useFetch<AdminStats>("/admin/stats");
 }
 
+// ── Moderation console (US-F.2) ──────────────────────────────────────────────
+
+export interface ModerationGroup {
+  id: string; name: string; description: string | null;
+  created_by: string; creator_name: string; member_count: number; created_at: string;
+}
+export interface ModerationResource {
+  id: string; file_name: string; file_type: string;
+  uploaded_by: string; uploader_name: string; group_id: string; group_name: string; created_at: string;
+}
+export interface ModerationAnnouncement {
+  id: string; title: string; message: string;
+  author_id: string; author_name: string; group_id: string; group_name: string;
+  is_pinned: boolean; created_at: string;
+}
+export interface ModerationLog {
+  id: string; admin_id: string; admin_name: string;
+  entity_type: string; entity_id: string; action: string;
+  reason: string | null; target_title: string | null; created_at: string;
+}
+
+export function useModerationGroups() { return useFetch<ModerationGroup[]>("/admin/moderation/groups"); }
+export function useModerationResources() { return useFetch<ModerationResource[]>("/admin/moderation/resources"); }
+export function useModerationAnnouncements() { return useFetch<ModerationAnnouncement[]>("/admin/moderation/announcements"); }
+export function useModerationAuditLog() { return useFetch<ModerationLog[]>("/admin/moderation/audit-logs"); }
+
 // ── Sessions for a single group (US-C.3) ─────────────────────────────────────
 
 export function useGroupSessions(groupId: string) {

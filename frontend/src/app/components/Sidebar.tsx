@@ -79,6 +79,14 @@ const NAV: {
   },
 ];
 
+// US-F.2 — admin-only entry, appended to NAV when the user is an admin
+const MODERATION_NAV = {
+  id: 'moderation',
+  label: 'Moderation',
+  icon: '⚑',
+  path: '/admin/moderation',
+} as const;
+
 function ProfilePanel({
   user,
   theme,
@@ -369,8 +377,15 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Show the admin-only Moderation entry when the logged-in user is an admin (US-F.2).
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem('ss_user_role') === 'admin');
+  }, []);
+  const nav = isAdmin ? [...NAV, MODERATION_NAV] : NAV;
+
   const activeId =
-    NAV.find((item) =>
+    nav.find((item) =>
       item.path !== '/dashboard'
         ? pathname.startsWith(item.path)
         : pathname === item.path,
@@ -404,7 +419,7 @@ export function Sidebar() {
           flex: 1,
         }}
       >
-        {NAV.map((item) => {
+        {nav.map((item) => {
           const isActive = item.id === activeId;
 
           return (
