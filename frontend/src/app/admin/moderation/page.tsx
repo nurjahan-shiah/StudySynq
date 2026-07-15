@@ -96,7 +96,23 @@ export default function ModerationConsolePage() {
     }
   }
 
+  async function revert(entity: Entity, id: string) {
+    if (!confirm(`Restore this ${entity}? It will become visible again.`)) return;
+    const res = await apiClient.post(`/admin/moderation/${entity}/${id}/restore`, {});
+    if (!res.error) {
+      refetchFor(entity);
+      audit.refetch();
+    }
+  }
+
   if (!ready) return null; // avoid flashing the console before the guard runs
+
+  // Current state per entity: the newest audit action wins (list is newest-first).
+  // A "delete" that is still the latest action can be reverted.
+  const latestAction: Record<string, string> = {};
+  for (const l of audit.data ?? []) {
+    if (!(l.entity_id in latestAction)) latestAction[l.entity_id] = l.action;
+  }
 
   const chip = (active: boolean): CSSProperties => ({
     padding: "8px 14px", border: "none", background: "transparent",
@@ -140,16 +156,13 @@ export default function ModerationConsolePage() {
       <Sidebar />
 
       <main style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, color: T.text, margin: 0 }}>Moderation console</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <NotificationBell />
             <ProfileButton />
           </div>
         </div>
-        <p style={{ fontSize: 13, color: T.text2, margin: "0 0 18px" }}>
-          Platform-wide moderation — deletions are soft and recorded in the audit log.
-        </p>
 
         <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.border}`, marginBottom: 20 }}>
           {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={chip(tab === t.id)}>{t.label}</button>)}
@@ -198,17 +211,38 @@ export default function ModerationConsolePage() {
         )}
 
         {tab === "audit" && (
-          <Table head={["Admin", "Action", "Type", "Target", "Reason", "When"]} loading={audit.loading} empty={(audit.data ?? []).length === 0}>
-            {(audit.data ?? []).map((l) => (
-              <tr key={l.id}>
-                <td style={td}>{l.admin_name}</td>
-                <td style={td}><span style={{ textTransform: "capitalize" }}>{l.action}</span></td>
-                <td style={{ ...td, textTransform: "capitalize" }}>{l.entity_type}</td>
-                <td style={td}>{l.target_title ?? l.entity_id}</td>
-                <td style={{ ...td, color: T.text2 }}>{l.reason || "—"}</td>
-                <td style={{ ...td, color: T.text2, whiteSpace: "nowrap" }}>{fmt(l.created_at)}</td>
-              </tr>
-            ))}
+          <Table head={["Admin", "Action", "Type", "Target", "Reason", "When", ""]} loading={audit.loading} empty={(audit.data ?? []).length === 0}>
+            {(audit.data ?? []).map((l) => {
+              const revertable = l.action === "delete" && latestAction[l.entity_id] === "delete";
+              return (
+                <tr key={l.id}>
+                  <td style={td}>{l.admin_name}</td>
+                  <td style={td}>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600, color: l.action === "restore" ? "var(--ss-green)" : T.text }}>
+                      {l.action}
+                    </span>
+                  </td>
+                  <td style={{ ...td, textTransform: "capitalize" }}>{l.entity_type}</td>
+                  <td style={td}>{l.target_title ?? l.entity_id}</td>
+                  <td style={{ ...td, color: T.text2 }}>{l.reason || "—"}</td>
+                  <td style={{ ...td, color: T.text2, whiteSpace: "nowrap" }}>{fmt(l.created_at)}</td>
+                  <td style={{ ...td, textAlign: "right" }}>
+                    {revertable && (
+                      <button
+                        onClick={() => revert(l.entity_type as Entity, l.entity_id)}
+                        style={{
+                          padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                          border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ↩ Revert
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </Table>
         )}
       </main>

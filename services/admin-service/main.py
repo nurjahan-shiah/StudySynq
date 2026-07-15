@@ -787,6 +787,37 @@ async def moderation_delete(
     return {"message": f"{entity.capitalize()} deleted successfully", "log_id": str(entry.id)}
 
 
+@app.post("/admin/moderation/{entity}/{item_id}/restore")
+async def moderation_restore(
+    entity: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """Revert a soft-delete: make the item visible again and record the restore."""
+    if entity not in _MODERATION_ENTITIES:
+        raise HTTPException(status_code=400, detail="Invalid entity. Use group, resource, or announcement.")
+
+    model, title_attr = _MODERATION_ENTITIES[entity]
+    item = db.query(model).filter(model.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"{entity.capitalize()} not found")
+    if not item.is_deleted:
+        raise HTTPException(status_code=400, detail=f"{entity.capitalize()} is not currently deleted")
+
+    target_title = getattr(item, title_attr, None)
+    item.is_deleted = False
+    item.deleted_at = None
+    item.deleted_by = None
+
+    entry = log_moderation(
+        db, current_user["user_id"], entity, item_id, "restore", None, target_title,
+    )
+    db.commit()
+
+    return {"message": f"{entity.capitalize()} restored successfully", "log_id": str(entry.id)}
+
+
 @app.get("/admin/moderation/audit-logs")
 async def moderation_audit_logs(
     limit: int = Query(100, le=500),

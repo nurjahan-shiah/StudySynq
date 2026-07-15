@@ -97,6 +97,18 @@ print_result "Audit shows the admin" "Mod Admin" "$AUDIT"
 
 # ---------------------------------------------------------------------------
 echo ""
+echo "[ 3b ] Admin reverts the resource deletion; it becomes visible again"
+RESTORE=$(curl -s -X POST "$BASE_URL/admin/moderation/resource/$RID/restore" -H "Authorization: Bearer $AT")
+print_result "Restore returns a log_id" "log_id" "$RESTORE"
+LIST_RESTORED=$(curl -s -X GET "$BASE_URL/groups/$GID/resources" -H "Authorization: Bearer $MT")
+print_result "Resource back in group list" "exam-solutions.pdf" "$LIST_RESTORED"
+GET_RESTORED=$(curl -s -o /dev/null -w '%{http_code}' -X GET "$BASE_URL/resources/$RID" -H "Authorization: Bearer $MT")
+print_result "Direct fetch works again (200)" "200" "$GET_RESTORED"
+AUDIT_R=$(curl -s -X GET "$BASE_URL/admin/moderation/audit-logs" -H "Authorization: Bearer $AT")
+print_result "Audit shows a restore action" "\"action\":\"restore\"" "$AUDIT_R"
+
+# ---------------------------------------------------------------------------
+echo ""
 echo "[ 4 ] Admin deletes the announcement; gone from the board"
 curl -s -X DELETE "$BASE_URL/admin/moderation/announcement/$AID?reason=Spam" -H "Authorization: Bearer $AT" > /dev/null
 BOARD=$(curl -s -X GET "$BASE_URL/groups/$GID/announcements" -H "Authorization: Bearer $MT")
