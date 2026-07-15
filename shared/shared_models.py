@@ -78,6 +78,10 @@ class Group(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     is_public = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # US-F.2 moderation soft-delete
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
     creator = relationship("User", back_populates="groups_created", foreign_keys=[created_by])
@@ -116,6 +120,10 @@ class Resource(Base):
     file_url = Column(String(255), nullable=False)
     file_type = Column(String(50), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # US-F.2 moderation soft-delete
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
     group = relationship("Group", back_populates="resources")
@@ -255,6 +263,10 @@ class Announcement(Base):
     is_pinned = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # US-F.2 moderation soft-delete
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
 
 # ============================================================================
 # Tasks (US-E.3 @author: Ahmed)

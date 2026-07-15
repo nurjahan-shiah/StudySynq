@@ -68,7 +68,7 @@ StudySync/
 │       ├── notifications/    # Notification Centre + preferences (US-E.1/E.5)
 │       ├── groups/           # Group list + detail w/ Announcements & Tasks tabs (US-E.2/E.3)
 │       ├── tasks/            # Personal "My tasks" list (US-E.3)
-│       └── admin/            # Admin console
+│       └── admin/            # Admin console + moderation console (US-F.1/F.2)
 ├── shared/                   # Shared auth utilities across services
 ├── datalake/                 # Delta Lake analytics pipeline
 ├── tests/
@@ -78,7 +78,8 @@ StudySync/
 │       ├── notifications/    # Notification Centre tests (US-E.1)
 │       ├── announcements/    # Announcement Board tests (US-E.2)
 │       ├── tasks/            # Task tracking tests (US-E.3)
-│       └── preferences/      # Notification preferences tests (US-E.5)
+│       ├── preferences/      # Notification preferences tests (US-E.5)
+│       └── moderation/       # Moderation console tests (US-F.2)
 ├── docker-compose-microservices.yml
 └── README.md
 ```
@@ -198,6 +199,7 @@ bash tests/curl/notifications/test_notifications.sh
 bash tests/curl/announcements/test_announcements.sh
 bash tests/curl/tasks/test_tasks.sh
 bash tests/curl/preferences/test_preferences.sh
+bash tests/curl/moderation/test_moderation.sh
 ```
 
 ---

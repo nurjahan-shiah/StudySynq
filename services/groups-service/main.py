@@ -66,7 +66,8 @@ async def list_groups(
     List all public groups.
     Only authenticated users can list groups.
     """
-    groups = db.query(Group).filter(Group.is_public == True).all()
+    groups = db.query(Group).filter(Group.is_public == True,
+                                    Group.is_deleted == False).all()  # noqa: E712 — hide moderated (US-F.2)
     
     return [
         GroupResponse(
@@ -142,7 +143,7 @@ async def get_group(
     Get detailed information about a group.
     """
     group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
+    if not group or group.is_deleted:  # moderated groups are inaccessible (US-F.2)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Group not found"
