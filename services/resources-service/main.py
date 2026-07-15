@@ -41,7 +41,8 @@ async def list_resources(group_id: UUID, db: Session = Depends(get_db),
         raise HTTPException(status_code=403, detail="Not a member of this group")
 
     return (db.query(Resource)
-              .filter(Resource.group_id == group_id)
+              .filter(Resource.group_id == group_id,
+                      Resource.is_deleted == False)  # noqa: E712 — hide moderated (US-F.2)
               .order_by(Resource.created_at.desc()).all())
 
 @app.post("/groups/{group_id}/resources", response_model=ResourceResponse, status_code=201)
@@ -81,7 +82,7 @@ async def get_resource(resource_id: UUID, db: Session = Depends(get_db),
                        current_user: dict = Depends(get_current_user)):
     """Get a single resource by ID."""
     resource = db.query(Resource).filter(Resource.id == resource_id).first()
-    if not resource:
+    if not resource or resource.is_deleted:  # moderated resources are inaccessible (US-F.2)
         raise HTTPException(status_code=404, detail="Resource not found")
 
     membership = (db.query(GroupMembership)

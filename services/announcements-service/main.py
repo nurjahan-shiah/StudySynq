@@ -96,7 +96,8 @@ async def list_announcements(group_id: UUID, db: Session = Depends(get_db),
     """List a group's announcements (pinned first, then newest)."""
     _require_member(db, group_id, current_user)
     rows = (db.query(Announcement)
-              .filter(Announcement.group_id == group_id)
+              .filter(Announcement.group_id == group_id,
+                      Announcement.is_deleted == False)  # noqa: E712 — hide moderated (US-F.2)
               .order_by(Announcement.is_pinned.desc(), Announcement.created_at.desc())
               .all())
     return [_to_response(db, a) for a in rows]
@@ -148,7 +149,7 @@ async def get_announcement(announcement_id: UUID, db: Session = Depends(get_db),
                            current_user: dict = Depends(get_current_user)):
     """Get a single announcement (any member of its group, or admin)."""
     announcement = db.query(Announcement).filter(Announcement.id == announcement_id).first()
-    if not announcement:
+    if not announcement or announcement.is_deleted:  # moderated announcements are inaccessible (US-F.2)
         raise HTTPException(status_code=404, detail="Announcement not found")
     _require_member(db, announcement.group_id, current_user)
     return _to_response(db, announcement)
