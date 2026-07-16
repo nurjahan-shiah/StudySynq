@@ -79,13 +79,21 @@ const NAV: {
   },
 ];
 
-// US-F.2 — admin-only entry, appended to NAV when the user is an admin
-const MODERATION_NAV = {
-  id: 'moderation',
-  label: 'Moderation',
-  icon: '⚑',
-  path: '/admin/moderation',
-} as const;
+// US-F.2 / US-F.6 — admin-only entries, appended to NAV when the user is an admin
+const ADMIN_NAV = [
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: '◔',
+    path: '/admin/analytics',
+  },
+  {
+    id: 'moderation',
+    label: 'Moderation',
+    icon: '⚑',
+    path: '/admin/moderation',
+  },
+] as const;
 
 function ProfilePanel({
   user,
@@ -382,7 +390,7 @@ export function Sidebar() {
   useEffect(() => {
     setIsAdmin(localStorage.getItem('ss_user_role') === 'admin');
   }, []);
-  const nav = isAdmin ? [...NAV, MODERATION_NAV] : NAV;
+  const nav = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
 
   const activeId =
     nav.find((item) =>
