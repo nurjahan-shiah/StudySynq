@@ -37,6 +37,7 @@ function SessionCard({ session }: { session: SessionWithGroup }) {
   const router = useRouter();
   const [hovered, setHovered] = useState(false);
   const upcoming = isUpcoming(session.scheduled_at);
+  const cancelled = session.is_cancelled;
 
   return (
     <div
@@ -53,21 +54,24 @@ function SessionCard({ session }: { session: SessionWithGroup }) {
         background: hovered ? `${T.red}08` : T.card,
         cursor: "pointer",
         transition: "border-color 0.12s, background 0.12s",
-        opacity: upcoming ? 1 : 0.65,
+        opacity: cancelled ? 0.6 : upcoming ? 1 : 0.65,
         display: "flex", flexDirection: "column", gap: 6,
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: T.text, margin: 0, lineHeight: 1.3 }}>
+        <p style={{
+          fontSize: 14, fontWeight: 700, color: T.text, margin: 0, lineHeight: 1.3,
+          textDecoration: cancelled ? "line-through" : "none",
+        }}>
           {session.title}
         </p>
         <span style={{
           fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, flexShrink: 0,
-          background: upcoming ? `${T.red}18` : T.bg3,
-          color: upcoming ? T.red : T.text2,
-          border: `1px solid ${upcoming ? `${T.red}30` : T.border}`,
+          background: !cancelled && upcoming ? `${T.red}18` : T.bg3,
+          color: !cancelled && upcoming ? T.red : T.text2,
+          border: `1px solid ${!cancelled && upcoming ? `${T.red}30` : T.border}`,
         }}>
-          {upcoming ? "Upcoming" : "Past"}
+          {cancelled ? "Cancelled" : upcoming ? "Upcoming" : "Past"}
         </span>
       </div>
 
