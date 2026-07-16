@@ -58,7 +58,6 @@ type Tab = "users" | "courses";
 function rolePill(role: string) {
   const map: Record<string, string> = {
     admin: "#fee2e2|#b91c1c",
-    group_leader: "#ede9fe|#7c3aed",
     student: "#dbeafe|#1d4ed8",
   };
   const [bg, fg] = (map[role] ?? "#f3f4f6|#374151").split("|");
@@ -316,7 +315,6 @@ export default function AdminDashboard() {
               >
                 <option value="all">All roles</option>
                 <option value="student">Student</option>
-                <option value="group_leader">Group leader</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -373,7 +371,6 @@ export default function AdminDashboard() {
                             }}
                           >
                             <option value="student">Student</option>
-                            <option value="group_leader">Group leader</option>
                             <option value="admin">Admin</option>
                           </select>
                         ) : (

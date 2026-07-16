@@ -271,7 +271,6 @@ def get_current_user(
 
 VALID_USER_ROLES = frozenset({
     "student",
-    "group_leader",
     "admin",
 })
 
@@ -349,8 +348,3 @@ def require_roles(*allowed_roles: str):
 
 # Reusable dependencies for common StudySync role combinations
 require_admin = require_roles("admin")
-
-require_group_leader_or_admin = require_roles(
-    "group_leader",
-    "admin",
-)

@@ -423,7 +423,6 @@ async def list_users(
 
     if role and role in (
         "student",
-        "group_leader",
         "admin"
     ):
         q = q.filter(User.role == role)
@@ -585,7 +584,6 @@ async def change_user_role(
 ):
     if body.role not in (
         "student",
-        "group_leader",
         "admin"
     ):
         raise HTTPException(

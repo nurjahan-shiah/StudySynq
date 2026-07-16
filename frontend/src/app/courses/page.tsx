@@ -282,7 +282,7 @@ export default function CoursesPage() {
           <div style={{ textAlign: "center", padding: "40px 0", color: T.text2, fontSize: 13 }}>Loading…</div>
         ) : tab === "my" ? (
           (enrolled ?? []).length === 0 ? (
-            <Empty icon="◎" msg="No courses enrolled yet - browse the catalogue to get started." />
+            <Empty icon="◎" msg="No courses enrolled yet — browse the catalogue to get started." />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
               {(enrolled ?? []).map((c) => (

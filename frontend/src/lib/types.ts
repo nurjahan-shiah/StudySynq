@@ -1,4 +1,4 @@
-export type UserRole = "student" | "group_leader" | "admin";
+export type UserRole = "student" | "admin";
 
 export interface AuthUser {
   user_id: string;

@@ -19,7 +19,6 @@ Base = declarative_base()
 
 class UserRole(str, enum.Enum):
     STUDENT = "student"
-    GROUP_LEADER = "group_leader"
     ADMIN = "admin"
 
 class GroupMembershipRole(str, enum.Enum):

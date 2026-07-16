@@ -13,13 +13,13 @@ from pydantic import BaseModel, EmailStr, field_validator
 # Auth Schemas
 # ============================================================================
 
-VALID_SIGNUP_ROLES = {"student", "group_leader", "admin"}
+VALID_SIGNUP_ROLES = {"student", "admin"}
 
 class UserRegister(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: str = "student"  # student | group_leader | admin
+    role: str = "student"  # student | admin
 
     @field_validator("password")
     @classmethod

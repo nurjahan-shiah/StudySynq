@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
 import Navbar from "../components/Navbar";
-import OnboardingCourses from "./OnboardingCourses";
 
-type Role = "student" | "group_leader" | "admin";
+type Role = "student" | "admin";
 
 interface PasswordStrength {
   minLength: boolean;
@@ -29,9 +28,8 @@ function isStrongEnough(s: PasswordStrength) {
 }
 
 const ROLES: { value: Role; label: string; desc: string; icon: string }[] = [
-  { value: "student",      label: "Student",      desc: "Join study groups and collaborate",  icon: "📚" },
-  { value: "group_leader", label: "Group Leader", desc: "Create and manage study groups",     icon: "🎯" },
-  { value: "admin",        label: "Admin",        desc: "Full platform management access",    icon: "⚙️" },
+  { value: "student", label: "Student", desc: "Join study groups and collaborate",  icon: "📚" },
+  { value: "admin",   label: "Admin",   desc: "Full platform management access",    icon: "⚙️" },
 ];
 
 function StrengthRow({ ok, label }: { ok: boolean; label: string }) {
@@ -83,10 +81,8 @@ export default function SignupPage() {
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState("");
   const [showWelcome, setShowWelcome]         = useState(false);
-  const [showOnboarding, setShowOnboarding]   = useState(false);
   const [registeredName, setRegisteredName]   = useState("");
   const [registeredRole, setRegisteredRole]   = useState<Role>("student");
-  const [registeredUserId, setRegisteredUserId] = useState("");
 
   const strength       = checkPassword(password);
   const passwordsMatch = password === confirmPassword && confirmPassword !== "";
@@ -114,14 +110,7 @@ export default function SignupPage() {
 
       setRegisteredName(name);
       setRegisteredRole(role);
-      setRegisteredUserId(res.data!.user_id);
-
-      // US-G.5: only students/leaders enroll in courses — admins skip straight to welcome.
-      if (role === "student" || role === "group_leader") {
-        setShowOnboarding(true);
-      } else {
-        setShowWelcome(true);
-      }
+      setShowWelcome(true);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -131,13 +120,6 @@ export default function SignupPage() {
 
   return (
     <>
-      {showOnboarding && (
-        <OnboardingCourses
-          userId={registeredUserId}
-          onDone={() => { setShowOnboarding(false); setShowWelcome(true); }}
-        />
-      )}
-
       {showWelcome && (
         <WelcomeModal
           name={registeredName}

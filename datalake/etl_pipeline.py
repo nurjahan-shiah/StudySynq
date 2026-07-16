@@ -39,7 +39,7 @@ def run_etl():
         }))
         events["ts"] = pd.to_datetime(events["ts"], utc=True)
         write_deltalake(f"{LAKE_PATH}/activity_events",
-                        events, mode="overwrite", schema_mode="overwrite")
+                        events, mode="append", schema_mode="merge")
         print(f"   wrote {len(events)} rows")
 
         print("→ resource_metadata")
@@ -57,7 +57,7 @@ def run_etl():
         }))
         resources["ts"] = pd.to_datetime(resources["ts"], utc=True)
         write_deltalake(f"{LAKE_PATH}/resource_metadata",
-                        resources, mode="overwrite", schema_mode="overwrite")
+                        resources, mode="append", schema_mode="merge")
         print(f"   wrote {len(resources)} rows")
 
         print("→ recommendation_features")
@@ -81,6 +81,3 @@ def run_etl():
         print(f"   wrote {len(features)} rows")
 
     print(f"\nETL done at {datetime.now(timezone.utc).isoformat()}")
-
-if __name__ == "__main__":
-    run_etl()

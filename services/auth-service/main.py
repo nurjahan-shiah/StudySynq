@@ -1,7 +1,7 @@
 """
 services/auth-service/main.py
 Authentication Service
-- User registration (with role assignment: Student / Group Leader / Admin)
+- User registration (with role assignment: Student / Admin)
 - User login (returns JWT token)
 - Token validation (used by other services via HTTP calls)
 - First-login welcome state
@@ -89,7 +89,6 @@ app = FastAPI(
 
 ROLE_MAP = {
     "student": UserRole.STUDENT,
-    "group_leader": UserRole.GROUP_LEADER,
     "admin": UserRole.ADMIN,
 }
 
@@ -182,7 +181,7 @@ async def register(
 
     - Validates password strength (enforced by schema)
     - Checks for duplicate email
-    - Assigns requested role (Student / Group Leader / Admin)
+    - Assigns requested role (Student / Admin)
     - Returns JWT token + is_first_login=True on success (auto-login)
     """
     # Duplicate-email check
