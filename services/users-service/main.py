@@ -14,6 +14,10 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 from contextlib import asynccontextmanager
+import json
+import os
+
+import httpx
 
 # Import shared utilities
 import sys
@@ -21,7 +25,13 @@ sys.path.append("/shared")
 from shared_models import User, Course, UserEnrollment, Base
 from shared_database import SessionLocal, engine, get_db
 from shared_auth import get_current_user
-from shared_schemas import UserProfile, UserUpdate, CourseResponse
+from shared_schemas import (
+    UserProfile,
+    UserUpdate,
+    CourseResponse,
+    OnboardingSuggestionRequest,
+    OnboardingSuggestionResponse,
+)
 
 # ============================================================================
 # Initialize Database
@@ -126,6 +136,120 @@ async def update_user(
         role=user.role.value,
         created_at=user.created_at
     )
+
+@app.post("/users/onboarding/suggest-courses", response_model=OnboardingSuggestionResponse)
+async def suggest_onboarding_courses(
+    body: OnboardingSuggestionRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """
+    US-G.5 — AI Onboarding Course Suggestions (extends US-A.1)
+
+    Given a student's program and year, ask an LLM to pick the courses from
+    StudySync's own catalogue that a student in that program/year is most
+    likely enrolled in. The model is only allowed to choose from the real
+    course_code values passed in — this stops it from hallucinating courses
+    that don't exist in our catalogue.
+    """
+    catalogue = db.query(Course).order_by(Course.course_code).all()
+
+    if not catalogue:
+        return OnboardingSuggestionResponse(courses=[], note="No courses in the catalogue yet.")
+
+    catalogue_lines = "\n".join(
+        f"- {c.course_code}: {c.course_name} ({c.department})" for c in catalogue
+    )
+    valid_codes = {c.course_code for c in catalogue}
+
+    api_key = os.getenv("GROQ_API_KEY")
+    suggested_codes: list[str] = []
+    note = None
+
+    if api_key:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": f"""A student has just signed up for StudySync.
+Program: {body.program}
+Year: {body.year}
+
+Here is the full course catalogue (course_code: course_name (department)):
+{catalogue_lines}
+
+Pick the course_code values (from the catalogue above ONLY — never invent one)
+that a student in this program and year is most likely to be enrolled in
+this term. Return 3-8 courses if that many reasonably fit, fewer if the
+catalogue is small.
+
+Respond with ONLY a JSON array of course_code strings, nothing else.
+Example: ["EECS 3101", "EECS 3311"]""",
+                            }
+                        ],
+                        "max_tokens": 256,
+                        "temperature": 0.2,
+                    },
+                    timeout=20.0,
+                )
+
+            if response.status_code == 200:
+                content = response.json()["choices"][0]["message"]["content"].strip()
+                # Models sometimes wrap JSON in a code fence despite instructions.
+                if content.startswith("```"):
+                    content = content.strip("`")
+                    content = content.split("\n", 1)[-1] if "\n" in content else content
+                parsed = json.loads(content)
+                if isinstance(parsed, list):
+                    suggested_codes = [c for c in parsed if isinstance(c, str)]
+            else:
+                note = "AI suggestion service returned an error; showing a basic match instead."
+        except Exception:
+            note = "AI suggestion service is unavailable; showing a basic match instead."
+    else:
+        note = "AI suggestions are not configured; showing a basic match instead."
+
+    # Only trust codes that actually exist in our catalogue.
+    suggested_codes = [code for code in suggested_codes if code in valid_codes]
+
+    # Fallback when the AI is unavailable or returned nothing usable: a
+    # lightweight keyword match between the program name and department,
+    # so the endpoint always returns something useful.
+    if not suggested_codes:
+        program_lower = body.program.lower()
+        fallback = [
+            c for c in catalogue
+            if c.department.lower() in program_lower or program_lower in c.department.lower()
+        ]
+        suggested_codes = [c.course_code for c in (fallback or catalogue)[:6]]
+        if note is None:
+            note = "Showing a basic match based on your program's department."
+
+    by_code = {c.course_code: c for c in catalogue}
+    matched = [by_code[code] for code in suggested_codes if code in by_code]
+
+    return OnboardingSuggestionResponse(
+        courses=[
+            CourseResponse(
+                id=c.id,
+                course_code=c.course_code,
+                course_name=c.course_name,
+                department=c.department,
+            )
+            for c in matched
+        ],
+        note=note,
+    )
+
 
 @app.get("/users/{user_id}/enrollments", response_model=List[CourseResponse])
 async def get_user_enrollments(

@@ -53,7 +53,6 @@ export interface StudySession {
   description: string | null;
   created_by: string;
   created_at: string;
-  is_cancelled: boolean;
 }
 
 export interface SessionWithGroup extends StudySession {

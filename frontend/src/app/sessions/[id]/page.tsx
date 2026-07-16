@@ -314,7 +314,6 @@ export default function SessionDetailPage() {
 
   const upcoming = session ? new Date(session.scheduled_at) >= new Date() : false;
   const isCreator = session?.created_by === userId;
-  const cancelled = session?.is_cancelled ?? false;
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
@@ -375,7 +374,7 @@ export default function SessionDetailPage() {
                     )}
                   </div>
                   {/* cancelled badge or status badge */}
-                  {cancelled ? (
+                  {(session as any).is_cancelled ? (
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0,
                       background: `${T.red}18`, color: T.red, border: `1px solid ${T.red}30`,
@@ -397,24 +396,20 @@ export default function SessionDetailPage() {
                   {session.location && <DetailRow icon="⊙" label={session.location} />}
                 </div>
 
-                {/* Edit / Cancel buttons — only make sense for sessions that haven't happened yet */}
-                {isCreator && !cancelled && (
+                {/* Edit / Cancel buttons */}
+                {isCreator && !(session as any).is_cancelled && (
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                    {upcoming && (
-                      <>
-                        <button onClick={() => setShowEdit(true)} style={{
-                          padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                          border: `1px solid ${T.border}`, background: "transparent",
-                          color: T.text2, cursor: "pointer",
-                        }}>Edit</button>
-                        <button onClick={handleCancel} disabled={cancelling} style={{
-                          padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                          border: `1px solid ${T.red}`, background: "transparent",
-                          color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
-                          opacity: cancelling ? 0.6 : 1,
-                        }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
-                      </>
-                    )}
+                    <button onClick={() => setShowEdit(true)} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${T.border}`, background: "transparent",
+                      color: T.text2, cursor: "pointer",
+                    }}>Edit</button>
+                    <button onClick={handleCancel} disabled={cancelling} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${T.red}`, background: "transparent",
+                      color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
+                      opacity: cancelling ? 0.6 : 1,
+                    }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
                     <button onClick={() => setShowSummarize(true)} style={{
                       padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                       border: `1px solid ${T.border}`, background: "transparent",
@@ -453,34 +448,23 @@ export default function SessionDetailPage() {
                   </p>
                 )}
 
-                {cancelled ? (
-                  <p style={{ fontSize: 12, color: T.text2, margin: "0 0 10px" }}>
-                    This session has been cancelled — RSVP is no longer available.
-                  </p>
-                ) : !upcoming && (
-                  <p style={{ fontSize: 12, color: T.text2, margin: "0 0 10px" }}>
-                    This session has already happened — RSVP is no longer available.
-                  </p>
-                )}
-
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {(["attending", "maybe", "not_attending"] as RSVPStatus[]).map(s => {
                     const active = myRSVP === s;
                     const color  = RSVP_COLORS[s];
-                    const disabled = submitting || cancelled || !upcoming;
                     return (
                       <button
                         key={s}
                         onClick={() => handleRSVP(s)}
-                        disabled={disabled}
+                        disabled={submitting}
                         style={{
                           padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                           border: `1px solid ${active ? color : T.border}`,
                           background: active ? `${color}18` : "transparent",
                           color: active ? color : T.text2,
-                          cursor: disabled ? "not-allowed" : "pointer",
+                          cursor: submitting ? "not-allowed" : "pointer",
                           textAlign: "left",
-                          opacity: disabled ? 0.5 : 1,
+                          opacity: submitting ? 0.6 : 1,
                           transition: "all 0.12s",
                         }}
                       >

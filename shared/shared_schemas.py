@@ -75,6 +75,19 @@ class CourseResponse(CourseBase):
         from_attributes = True
 
 # ============================================================================
+# US-G.5 — AI Onboarding Course Suggestions
+# ============================================================================
+
+class OnboardingSuggestionRequest(BaseModel):
+    program: str
+    year: str
+
+class OnboardingSuggestionResponse(BaseModel):
+    courses: list[CourseResponse]
+    note: Optional[str] = None
+
+# ============================================================================
+
 # Group Schemas
 # ============================================================================
 
