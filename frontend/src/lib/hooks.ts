@@ -377,3 +377,9 @@ export const explainRecommendation = (groupId: string) =>
   apiClient.get<{ group_id: string; group_name: string; score: number; explanation: string }>(
     `/recommendations/${groupId}/explain`
   );
+// US-G.3 @author: Uzma Alam
+export const askLibrary = (groupId: string, question: string) =>
+  apiClient.post<{ answer: string; sources: { file_name: string; file_url: string; file_type: string }[] }>(
+    `/groups/${groupId}/resources/ask?question=${encodeURIComponent(question)}`,
+    {}
+  );

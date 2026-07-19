@@ -8,6 +8,7 @@ import { NotificationBell } from "@/app/components/NotificationBell";
 import {
   useMyGroups,
   useMyResources,
+  askLibrary,
   type ResourceWithGroup,
   type MyGroup,
 } from "@/lib/hooks";
@@ -326,6 +327,74 @@ function ResourceRow({ resource, onPreview }: { resource: ResourceWithGroup; onP
     </div>
   );
 }
+// US-G.3 @author: Uzma Alam — AI Resource Q&A
+function AskLibrary({ groupId }: { groupId: string }) {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer]     = useState<string | null>(null);
+  const [sources, setSources]   = useState<{ file_name: string; file_url: string; file_type: string }[]>([]);
+  const [loading, setLoading]   = useState(false);
+
+  async function handleAsk() {
+    if (!question.trim()) return;
+    setLoading(true);
+    setAnswer(null);
+    setSources([]);
+    const res = await askLibrary(groupId, question);
+    if (res.data) {
+      setAnswer(res.data.answer);
+      setSources(res.data.sources ?? []);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
+      padding: "16px 20px", marginBottom: 16,
+    }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>
+        Ask your library
+      </p>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleAsk(); }}
+          placeholder="e.g. What did we cover about normalization?"
+          style={{
+            flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 13,
+            border: `1px solid ${T.border}`, background: T.bg2,
+            color: T.text, outline: "none",
+          }}
+        />
+        <button onClick={handleAsk} disabled={loading} style={{
+          padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+          border: "none", background: T.red, color: "#fff",
+          cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
+        }}>
+          {loading ? "Thinking…" : "Ask"}
+        </button>
+      </div>
+      {answer && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ fontSize: 13, color: T.text, margin: "0 0 8px", lineHeight: 1.5 }}>{answer}</p>
+          {sources.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>Sources</p>
+              {sources.map((s, i) => (
+                <a key={i} href={s.file_url} target="_blank" rel="noopener noreferrer" style={{
+                  fontSize: 12, color: T.red, textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  {fileIcon(s.file_type)} {s.file_name}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -334,6 +403,8 @@ export default function ResourcesPage() {
   const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "pdf" | "image" | "other">("all");
+  // US-G.3 @author: Uzma Alam
+  const [selectedGroupId, setSelectedGroupId] = useState("");
 
   useEffect(() => {
     setUserId(localStorage.getItem("ss_user_id") ?? "");
@@ -344,6 +415,11 @@ export default function ResourcesPage() {
 
   const loading = groupsLoading || resLoading;
   const isLeader = myGroups.some((g: MyGroup) => g.my_role === "leader");
+
+  // US-G.3 @author: Uzma Alam — set default group
+  useEffect(() => {
+    if (myGroups.length > 0 && !selectedGroupId) setSelectedGroupId(myGroups[0].id);
+  }, [myGroups, selectedGroupId]);
 
   const filtered = resources.filter(r => {
     const matchSearch = r.file_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -381,6 +457,26 @@ export default function ResourcesPage() {
         {/* Stats widget — leaders only */}
         {!loading && isLeader && (
           <StatsWidget resources={resources} myGroups={myGroups} />
+        )}
+
+        {/* US-G.3 @author: Uzma Alam — Ask your library */}
+        {!loading && myGroups.length > 0 && (
+          <div style={{ marginBottom: 4 }}>
+            {myGroups.length > 1 && (
+              <select
+                value={selectedGroupId}
+                onChange={e => setSelectedGroupId(e.target.value)}
+                style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 12, marginBottom: 8,
+                  border: `1px solid ${T.border}`, background: T.bg2,
+                  color: T.text, cursor: "pointer", outline: "none",
+                }}
+              >
+                {myGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            )}
+            {selectedGroupId && <AskLibrary groupId={selectedGroupId} />}
+          </div>
         )}
 
         {/* Search + filters */}

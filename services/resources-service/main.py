@@ -114,6 +114,91 @@ async def delete_resource(resource_id: str, db: Session = Depends(get_db),
     db.commit()
     return None
 
+# US-G.3 @author: Uzma Alam
+@app.post("/groups/{group_id}/resources/ask")
+async def ask_library(
+    group_id: str,
+    question: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Answer a natural-language question using group resource metadata."""
+    import os, httpx
+
+    # Verify membership
+    membership = (db.query(GroupMembership)
+                    .filter(GroupMembership.group_id == group_id,
+                            GroupMembership.user_id == current_user["user_id"])
+                    .first())
+    if not membership and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+    # Get all resources for the group
+    resources = (db.query(Resource)
+                   .filter(Resource.group_id == group_id)
+                   .order_by(Resource.created_at.desc()).all())
+
+    if not resources:
+        return {
+            "answer": "No resources found in this group yet.",
+            "sources": [],
+        }
+
+    # Build context from resource metadata
+    context = "\n".join([
+        f"- {r.file_name} ({r.file_type}) uploaded on {r.created_at.strftime('%Y-%m-%d')} — URL: {r.file_url}"
+        for r in resources
+    ])
+
+    prompt = f"""You are a study assistant helping students find resources in their group library.
+
+Available resources:
+{context}
+
+Student question: {question}
+
+Answer the question based on the available resources. If relevant files exist, mention them by name and say they can be downloaded. Keep your answer concise please."""
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        # simple keyword search
+        keywords = question.lower().split()
+        matches = [r for r in resources if any(k in r.file_name.lower() for k in keywords)]
+        return {
+            "answer": f"Found {len(matches)} file(s) related to your question." if matches else "No matching files found.",
+            "sources": [{"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type} for r in matches],
+        }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+            },
+            timeout=15.0,
+        )
+
+    if response.status_code != 200:
+        answer = "Could not generate an answer at this time."
+    else:
+        answer = response.json()["choices"][0]["message"]["content"].strip()
+
+    # Find relevant sources based on keyword matching
+    keywords = question.lower().split()
+    sources = [
+        {"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type}
+        for r in resources
+        if any(k in r.file_name.lower() for k in keywords)
+    ]
+
+    return {"answer": answer, "sources": sources}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8005)
