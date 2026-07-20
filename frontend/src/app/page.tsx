@@ -228,6 +228,121 @@ function ProductPreview() {
   );
 }
 
+// ─── Animated count-up stat ─────────────────────────────────────────────────
+function CountUp({ end, suffix = "", duration = 1400 }: { end: number; suffix?: string; duration?: number }) {
+  const [val, setVal] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      obs.disconnect();
+      const start = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min((now - start) / duration, 1);
+        // ease-out cubic
+        setVal(Math.round(end * (1 - Math.pow(1 - p, 3))));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, { threshold: 0.4 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [end, duration]);
+
+  return <span ref={ref}>{val.toLocaleString()}{suffix}</span>;
+}
+
+// ─── Pricing card ───────────────────────────────────────────────────────────
+function PricingCard({
+  name, price, period, tagline, features, cta, href, highlight = false, delay = 0,
+}: {
+  name: string; price: string; period?: string; tagline: string;
+  features: string[]; cta: string; href: string; highlight?: boolean; delay?: number;
+}) {
+  return (
+    <Reveal delay={delay} style={{ flex: "1 1 280px", maxWidth: 360 }}>
+      <div
+        className="ss-card"
+        style={{
+          height: "100%", display: "flex", flexDirection: "column", position: "relative",
+          border: highlight ? "2px solid var(--ss-red)" : "1px solid var(--border)",
+          boxShadow: highlight ? "0 16px 48px rgba(214,48,49,.18)" : undefined,
+        }}
+      >
+        {highlight && (
+          <span style={{
+            position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)",
+            background: "var(--ss-red)", color: "#fff", fontSize: "0.7rem", fontWeight: 700,
+            letterSpacing: 1, textTransform: "uppercase", padding: "4px 14px", borderRadius: 999,
+          }}>
+            Most popular
+          </span>
+        )}
+        <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{name}</h3>
+        <p style={{ fontSize: "0.85rem", color: "var(--text2)", marginBottom: 18 }}>{tagline}</p>
+        <div style={{ marginBottom: 22 }}>
+          <span style={{ fontSize: "2.4rem", fontWeight: 800, letterSpacing: "-1px", color: "var(--text)" }}>{price}</span>
+          {period && <span style={{ fontSize: "0.85rem", color: "var(--text2)", marginLeft: 6 }}>{period}</span>}
+        </div>
+        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 26px", flex: 1 }}>
+          {features.map(f => (
+            <li key={f} style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              fontSize: "0.88rem", color: "var(--text2)", padding: "6px 0", lineHeight: 1.5,
+            }}>
+              <span style={{ color: "var(--ss-green)", fontWeight: 800, flexShrink: 0 }}>✓</span>
+              {f}
+            </li>
+          ))}
+        </ul>
+        <Link
+          href={href}
+          className={highlight ? "ss-btn-primary" : "ss-btn-ghost"}
+          style={{ textAlign: "center", width: "100%" }}
+        >
+          {cta}
+        </Link>
+      </div>
+    </Reveal>
+  );
+}
+
+// ─── FAQ item ───────────────────────────────────────────────────────────────
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderBottom: "1px solid var(--border)" }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        style={{
+          width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+          gap: 16, padding: "20px 4px", background: "none", border: "none", cursor: "pointer",
+          textAlign: "left", color: "var(--text)", fontSize: "0.98rem", fontWeight: 600,
+        }}
+      >
+        {q}
+        <span style={{
+          color: "var(--ss-red)", fontSize: "1.2rem", fontWeight: 700, flexShrink: 0,
+          transform: open ? "rotate(45deg)" : "none", transition: "transform .2s",
+        }}>
+          +
+        </span>
+      </button>
+      <div style={{
+        maxHeight: open ? 200 : 0, overflow: "hidden", transition: "max-height .3s ease",
+      }}>
+        <p style={{ color: "var(--text2)", fontSize: "0.9rem", lineHeight: 1.7, padding: "0 4px 20px", margin: 0 }}>
+          {a}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Rotating hero word ─────────────────────────────────────────────────────
 function RotatingWord() {
   const words = ["together.", "smarter.", "on time.", "as a team."];
@@ -270,10 +385,51 @@ export default function Home() {
   ];
 
   const stats = [
-    { num: "k+", label: "Active students" },
-    { num: "5+", label: "Study groups" },
-    { num: "98%", label: "Satisfaction rate" },
-    { num: "2+", label: "Universities" },
+    { end: 12000, suffix: "+", label: "Active students" },
+    { end: 850, suffix: "+", label: "Study groups" },
+    { end: 98, suffix: "%", label: "Satisfaction rate" },
+    { end: 14, suffix: "", label: "Universities" },
+  ];
+
+  const plans = [
+    {
+      name: "Student", price: "$0", period: "forever", tagline: "Everything you need to study with your class.",
+      features: [
+        "Unlimited study groups & sessions",
+        "Shared resource library (up to 1 GB)",
+        "AI study-group recommendations",
+        "Notifications & task tracking",
+      ],
+      cta: "Start for free", href: "/signup",
+    },
+    {
+      name: "Campus Pro", price: "$4", period: "/mo · billed yearly", tagline: "For power users who live in their study groups.",
+      features: [
+        "Everything in Student",
+        "10 GB resource storage & file previews",
+        "AI session-notes summarizer",
+        "AI announcement drafting",
+        "Priority recommendations refresh",
+      ],
+      cta: "Go Pro", href: "/signup", highlight: true,
+    },
+    {
+      name: "Institution", price: "Custom", tagline: "Roll StudySync out across your whole faculty.",
+      features: [
+        "Admin console, moderation & audit log",
+        "Platform analytics powered by Delta Lake",
+        "SSO & roster integrations",
+        "Dedicated support & onboarding",
+      ],
+      cta: "Talk to us", href: "/signup",
+    },
+  ];
+
+  const faqs = [
+    { q: "Is StudySync really free for students?", a: "Yes. The Student plan is free forever — unlimited groups, sessions, and recommendations. Pro adds more storage and the AI power features." },
+    { q: "How do the AI recommendations work?", a: "Your course enrollments and group activity flow into our analytics layer, where a similarity model scores every study group against your courses. You only ever see groups that genuinely overlap with what you're taking." },
+    { q: "Who can see the files I upload?", a: "Only members of the group you upload to. Group leaders and platform admins can moderate content, and every moderation action is recorded in an audit log." },
+    { q: "Can my university adopt StudySync officially?", a: "That's what the Institution plan is for — admin tooling, analytics, and roster integrations so a whole faculty can onboard in days, not months." },
   ];
 
   return (
@@ -285,6 +441,16 @@ export default function Home() {
       <Navbar
         rightSlot={
           <>
+            <a
+              href="#pricing"
+              className="ss-btn-ghost"
+              onClick={e => {
+                e.preventDefault();
+                document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              Pricing
+            </a>
             <Link href="/login" className="ss-btn-ghost">Log in</Link>
             <Link href="/signup" className="ss-btn-primary">Get Started</Link>
           </>
@@ -375,7 +541,7 @@ export default function Home() {
             borderRight: i < stats.length - 1 ? "1px solid var(--border)" : "none",
           }}>
             <span style={{ fontSize: "2.4rem", fontWeight: 800, color: "var(--ss-red)", letterSpacing: "-1px", display: "block" }}>
-              {s.num}
+              <CountUp end={s.end} suffix={s.suffix} />
             </span>
             <div style={{ fontSize: "0.85rem", color: "var(--text2)", marginTop: 4 }}>{s.label}</div>
           </div>
@@ -430,6 +596,35 @@ export default function Home() {
           {testimonials.map((t, i) => (
             <TestimonialCard key={t.name} {...t} delay={i * 100} />
           ))}
+        </div>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section id="pricing" style={{ padding: "100px 5%", background: "var(--bg2)", borderTop: "1px solid var(--border)" }}>
+        <Eyebrow>Pricing</Eyebrow>
+        <StripeDivider />
+        <h2 style={{ textAlign: "center", fontSize: "clamp(1.8rem, 4vw, 2.6rem)", fontWeight: 800, letterSpacing: "-0.5px", marginBottom: 14, color: "var(--text)" }}>
+          Free for students. Fair for everyone.
+        </h2>
+        <p style={{ textAlign: "center", color: "var(--text2)", maxWidth: 460, margin: "0 auto 60px", lineHeight: 1.7 }}>
+          Start free with your class today — upgrade only if you want the AI power features.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 24, justifyContent: "center", alignItems: "stretch", maxWidth: 1100, margin: "0 auto" }}>
+          {plans.map((pl, i) => (
+            <PricingCard key={pl.name} {...pl} delay={i * 100} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section style={{ padding: "90px 5% 100px" }}>
+        <Eyebrow>FAQ</Eyebrow>
+        <StripeDivider />
+        <h2 style={{ textAlign: "center", fontSize: "clamp(1.8rem, 4vw, 2.6rem)", fontWeight: 800, letterSpacing: "-0.5px", marginBottom: 48, color: "var(--text)" }}>
+          Questions, answered
+        </h2>
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          {faqs.map(f => <FaqItem key={f.q} {...f} />)}
         </div>
       </section>
 

@@ -26,6 +26,29 @@ class UserRegister(BaseModel):
     password: str
     role: str = "student"
 
+    @field_validator("name")
+    @classmethod
+    def name_reasonable(cls, v: str) -> str:
+        v = v.strip()
+        if not (1 <= len(v) <= 100):
+            raise ValueError("Name must be 1-100 characters")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        # US-A.1 acceptance: password strength rules enforced at the schema
+        # boundary so every service inherits them.
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one number")
+        return v
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str

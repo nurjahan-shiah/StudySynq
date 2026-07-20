@@ -209,3 +209,16 @@ bash tests/curl/analytics/test_analytics.sh
 ## 📄 License
 
 Advanced Software Engineering (EECS 4314), York University, Summer 2026.
+
+---
+
+## 🔐 Production Hardening (commercial readiness)
+
+The following hardening is built in and configured via `.env` (see `.env.example`):
+
+- **Secrets out of source** — Supabase URL/keys, `SECRET_KEY`, and `GROQ_API_KEY` are read from the environment; nothing sensitive is committed.
+- **Signup protection** — password strength rules (8+ chars, letter + number) enforced at the schema layer, plus per-IP rate limiting on `/auth/register`.
+- **Upload pipeline integrity** — the resources service rejects metadata whose URL doesn't point at StudySync's own storage bucket, enforces a file-type allowlist, and (with `SUPABASE_SERVICE_ROLE_KEY` set) deletes the underlying storage object when a resource is removed so no orphaned files accumulate.
+- **Client-side upload guardrails** — 25 MB max and an extension allowlist checked before any bytes leave the browser.
+- **Scheduled analytics** — set `ETL_INTERVAL_MINUTES` to keep the Delta Lake tables and ML recommendations continuously fresh (the etl container re-runs the pipeline and retrains on an interval instead of running once).
+- **Admin oversight** — paginated user listing plus one-click CSV export of users and courses, with every export recorded in the audit log.
