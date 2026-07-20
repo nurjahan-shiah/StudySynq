@@ -27,6 +27,7 @@ export interface GroupDetail {
   name: string;
   description: string | null;
   is_public: boolean;
+  intended_major: string | null;
   created_by: string;
   created_at: string;
   member_count: number;
@@ -53,6 +54,7 @@ export interface StudySession {
   description: string | null;
   created_by: string;
   created_at: string;
+  is_cancelled: boolean;
 }
 
 export interface SessionWithGroup extends StudySession {

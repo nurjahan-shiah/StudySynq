@@ -20,6 +20,26 @@ export interface UploadResult {
   publicUrl: string;
 }
 
+// US-D.1 hardening — mirror of the server-side allowlist in
+// resources-service. Checked before any bytes leave the browser so users
+// get instant feedback instead of a failed upload.
+const MAX_FILE_SIZE_MB = 25;
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md",
+  "png", "jpg", "jpeg", "gif", "webp", "zip",
+]);
+
+export function validateFileForUpload(file: File): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return `".${ext}" files aren't supported. Upload notes, docs, slides, images, or zips.`;
+  }
+  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    return `File is larger than ${MAX_FILE_SIZE_MB} MB. Compress it or split it up.`;
+  }
+  return null;
+}
+
 function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -34,6 +54,12 @@ export function uploadFileToSupabase(
   onProgress?: (pct: number) => void
 ): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
+    const validationError = validateFileForUpload(file);
+    if (validationError) {
+      reject(new Error(validationError));
+      return;
+    }
+
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       reject(new Error(
         "Supabase is not configured — set NEXT_PUBLIC_SUPABASE_URL and " +

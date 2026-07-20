@@ -76,6 +76,7 @@ class Group(Base):
     description = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     is_public = Column(Boolean, default=True)
+    intended_major = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     # US-F.2 moderation soft-delete
     is_deleted = Column(Boolean, default=False, nullable=False)
@@ -314,4 +315,3 @@ class NotificationPreference(Base):
     is_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-

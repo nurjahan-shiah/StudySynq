@@ -11,6 +11,7 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
 import { useMyGroups } from "@/lib/hooks";
+import { MAJOR_GROUPS } from "@/lib/majors";
 
 const T = {
   bg:     "var(--bg)",
@@ -39,16 +40,18 @@ export default function GroupsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  const [intendedMajor, setIntendedMajor] = useState("");
 
   async function createGroup() {
     if (!name.trim()) return;
     setSaving(true);
     const res = await apiClient.post<{ id: string }>("/groups", {
       name, description, is_public: isPublic, course_ids: [],
+      intended_major: intendedMajor || null,
     });
     setSaving(false);
     setCreating(false);
-    setName(""); setDescription(""); setIsPublic(true);
+    setName(""); setDescription(""); setIsPublic(true); setIntendedMajor("");
     // Creator becomes the group leader — drop them straight into the new group.
     if (res.data?.id) router.push(`/groups/${res.data.id}`);
     else refetch();
@@ -107,6 +110,28 @@ export default function GroupsPage() {
                 fontFamily: "inherit",
               }}
             />
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 6 }}>
+                Intended major <span style={{ fontWeight: 400 }}>(optional)</span>
+              </label>
+              <select
+                value={intendedMajor}
+                onChange={(e) => setIntendedMajor(e.target.value)}
+                className="ss-input"
+                style={{
+                  width: "100%", padding: "9px 12px", borderRadius: 8,
+                  border: `1px solid ${T.border}`, background: T.bg3, color: T.text,
+                  fontSize: 13, outline: "none", boxSizing: "border-box",
+                }}
+              >
+                <option value="">Select major</option>
+                {MAJOR_GROUPS.map(g => (
+                  <optgroup key={g.faculty} label={g.faculty}>
+                    {g.majors.map(m => <option key={m} value={m}>{m}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.text2, cursor: "pointer" }}>
                 <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
@@ -177,9 +202,17 @@ export default function GroupsPage() {
                 <p style={{ fontSize: 12, color: T.text2, margin: "0 0 12px", minHeight: 32 }}>
                   {g.description || "No description."}
                 </p>
-                <div style={{ display: "flex", gap: 10, fontSize: 11, color: T.text2 }}>
+                <div style={{ display: "flex", gap: 10, fontSize: 11, color: T.text2, flexWrap: "wrap", alignItems: "center" }}>
                   <span>👥 {g.member_count} member{g.member_count === 1 ? "" : "s"}</span>
                   {g.course_codes?.length > 0 && <span>· {g.course_codes.join(", ")}</span>}
+                  {g.intended_major && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                      background: `${T.red}15`, color: T.red,
+                    }}>
+                      🎓 {g.intended_major}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
