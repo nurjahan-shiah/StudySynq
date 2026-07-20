@@ -288,6 +288,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8010
+      GROQ_API_KEY: ${GROQ_API_KEY}
     volumes:
       - ./shared:/shared:ro
     networks:
