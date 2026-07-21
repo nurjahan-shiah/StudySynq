@@ -27,6 +27,7 @@ export interface GroupDetail {
   name: string;
   description: string | null;
   is_public: boolean;
+  intended_major: string | null;
   created_by: string;
   created_at: string;
   member_count: number;

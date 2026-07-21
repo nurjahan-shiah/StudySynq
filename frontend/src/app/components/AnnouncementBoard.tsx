@@ -116,7 +116,7 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
 
     try {
       const response = await fetch(
-        `http://localhost:8000/groups/${groupId}/announcements/ai-draft`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/groups/${groupId}/announcements/ai-draft`,
         {
           method: "POST",
           headers: {

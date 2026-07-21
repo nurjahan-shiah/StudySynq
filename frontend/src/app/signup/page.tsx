@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { MAJOR_GROUPS } from "@/lib/majors";
 import Navbar from "../components/Navbar";
 
 type Role = "student" | "admin";
@@ -33,15 +34,7 @@ const ROLES: { value: Role; label: string; desc: string; icon: string }[] = [
 ];
 
 // US-G.5 — AI Onboarding Course Suggestions (extends US-A.1)
-const PROGRAMS = [
-  "Software Engineering",
-  "Computer Science",
-  "Computer Engineering",
-  "Electrical Engineering",
-  "Data Science",
-  "Business Administration",
-  "Other",
-];
+// Full major list now lives in @/lib/majors (shared with the group "intended major" field)
 const YEARS = ["1st year", "2nd year", "3rd year", "4th year", "5th year+"];
 
 interface SuggestedCourse {
@@ -381,7 +374,11 @@ export default function SignupPage() {
                     </label>
                     <select value={program} onChange={e => setProgram(e.target.value)} className="ss-input">
                       <option value="">Select program</option>
-                      {PROGRAMS.map(p => <option key={p} value={p}>{p}</option>)}
+                      {MAJOR_GROUPS.map(g => (
+                        <optgroup key={g.faculty} label={g.faculty}>
+                          {g.majors.map(m => <option key={m} value={m}>{m}</option>)}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                   <div>

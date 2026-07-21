@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from fastapi import (
     Cookie,
+    Request,
     Depends,
     FastAPI,
     Header,
@@ -170,12 +171,37 @@ async def health():
     return {"status": "ok", "service": "auth-service"}
 
 
+# ── US-A.1 hardening: throttle account creation per client IP ───────────────
+# Simple fixed-window limiter; enough to stop bulk signup abuse on a single
+# instance without adding a Redis dependency.
+import time as _time
+from collections import defaultdict as _defaultdict
+
+_REGISTER_WINDOW_SEC = 60
+_REGISTER_MAX_PER_WINDOW = 5
+_register_hits: dict[str, list[float]] = _defaultdict(list)
+
+
+def _check_register_rate_limit(client_ip: str) -> None:
+    now = _time.time()
+    hits = _register_hits[client_ip]
+    hits[:] = [t for t in hits if now - t < _REGISTER_WINDOW_SEC]
+    if len(hits) >= _REGISTER_MAX_PER_WINDOW:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many signup attempts — try again in a minute.",
+        )
+    hits.append(now)
+
+
 @app.post("/auth/register", response_model=TokenResponse)
 async def register(
     user_data: UserRegister,
     response: Response,
+    request: Request,
     db: Session = Depends(get_db)
 ):
+    _check_register_rate_limit(request.client.host if request.client else "unknown")
     """
     Register a new user account.
 

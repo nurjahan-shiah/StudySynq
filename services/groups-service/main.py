@@ -75,6 +75,7 @@ async def list_groups(
             name=g.name,
             description=g.description,
             is_public=g.is_public,
+            intended_major=g.intended_major,
             created_by=g.created_by,
             created_at=g.created_at
         )
@@ -97,7 +98,8 @@ async def create_group(
         name=group_data.name,
         description=group_data.description,
         created_by=current_user["user_id"],
-        is_public=group_data.is_public
+        is_public=group_data.is_public,
+        intended_major=group_data.intended_major
     )
     
     db.add(new_group)
@@ -129,6 +131,7 @@ async def create_group(
         name=new_group.name,
         description=new_group.description,
         is_public=new_group.is_public,
+        intended_major=new_group.intended_major,
         created_by=new_group.created_by,
         created_at=new_group.created_at
     )
@@ -169,6 +172,7 @@ async def get_group(
         name=group.name,
         description=group.description,
         is_public=group.is_public,
+        intended_major=group.intended_major,
         created_by=group.created_by,
         created_at=group.created_at,
         member_count=member_count,
@@ -215,6 +219,8 @@ async def update_group(
         group.description = group_data.description
     if group_data.is_public is not None:
         group.is_public = group_data.is_public
+    if group_data.intended_major is not None:
+        group.intended_major = group_data.intended_major
     
     db.commit()
     db.refresh(group)
@@ -224,6 +230,7 @@ async def update_group(
         name=group.name,
         description=group.description,
         is_public=group.is_public,
+        intended_major=group.intended_major,
         created_by=group.created_by,
         created_at=group.created_at
     )

@@ -158,6 +158,7 @@ This starts all containers:
 | Signup | http://localhost:3000/signup |
 | Dashboard | http://localhost:3000/dashboard |
 | Admin Console | http://localhost:3000/admin |
+| Health Dashboard| http://localhost:3000/admin/health|
 
 ---
 
@@ -209,3 +210,5 @@ bash tests/curl/analytics/test_analytics.sh
 ## 📄 License
 
 Advanced Software Engineering (EECS 4314), York University, Summer 2026.
+
+---

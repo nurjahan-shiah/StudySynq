@@ -20,6 +20,8 @@ Service URLs (internal to Docker network):
 
 import os
 import re
+import time
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -27,6 +29,9 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from jose import JWTError, jwt
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("api-gateway")
 
 # ============================================================================
 # Configuration
@@ -66,6 +71,7 @@ PUBLIC_ROUTES = {
     "/",
     "/docs",
     "/openapi.json",
+    "/health/services",
 }
 
 # Routes grouped by service.
@@ -317,7 +323,48 @@ async def health():
         "service": "api-gateway",
         "services": list(SERVICE_URLS.keys()),
     }
+SERVICE_HEALTH_URLS = {
+    "auth":            "http://auth-service:8001/auth/health",
+    "users":           "http://users-service:8002/users/health",
+    "groups":          "http://groups-service:8003/groups/health",
+    "sessions":        "http://sessions-service:8004/sessions/health",
+    "resources":       "http://resources-service:8005/resources/health",
+    "courses":         "http://courses-service:8006/courses/health",
+    "admin":           "http://admin-service:8007/admin/health",
+    "recommendations": "http://recommendations-service:8008/recommendations/health",
+    "notifications":   "http://notifications-service:8009/notifications/health",
+    "announcements":   "http://announcements-service:8010/announcements/health",
+}
 
+@app.get("/health/services")
+async def get_all_service_health():
+    """US-A.5 — Returns live health status of every microservice."""
+    results = {}
+    async with httpx.AsyncClient() as client:
+        for name, url in SERVICE_HEALTH_URLS.items():
+            start = time.time()
+            try:
+                resp = await client.get(url, timeout=3.0)
+                elapsed = round((time.time() - start) * 1000)
+                results[name] = {
+                    "status": "ok" if resp.status_code == 200 else "degraded",
+                    "status_code": resp.status_code,
+                    "response_ms": elapsed,
+                }
+                logger.info(f"Health check {name}: {resp.status_code} in {elapsed}ms")
+            except Exception as e:
+                elapsed = round((time.time() - start) * 1000)
+                results[name] = {
+                    "status": "down",
+                    "status_code": None,
+                    "response_ms": elapsed,
+                    "error": str(e),
+                }
+                logger.error(f"Health check {name} failed: {e}")
+    return {
+        "services": results,
+        "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
 
 @app.api_route(
     "/{path:path}",

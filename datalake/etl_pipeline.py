@@ -39,7 +39,7 @@ def run_etl():
         }))
         events["ts"] = pd.to_datetime(events["ts"], utc=True)
         write_deltalake(f"{LAKE_PATH}/activity_events",
-                        events, mode="append", schema_mode="merge")
+                        events, mode="overwrite", schema_mode="overwrite")
         print(f"   wrote {len(events)} rows")
 
         print("→ resource_metadata")
@@ -57,7 +57,7 @@ def run_etl():
         }))
         resources["ts"] = pd.to_datetime(resources["ts"], utc=True)
         write_deltalake(f"{LAKE_PATH}/resource_metadata",
-                        resources, mode="append", schema_mode="merge")
+                        resources, mode="overwrite", schema_mode="overwrite")
         print(f"   wrote {len(resources)} rows")
 
         print("→ recommendation_features")
@@ -81,3 +81,35 @@ def run_etl():
         print(f"   wrote {len(features)} rows")
 
     print(f"\nETL done at {datetime.now(timezone.utc).isoformat()}")
+
+
+if __name__ == "__main__":
+    # ETL_INTERVAL_MINUTES > 0 turns the one-shot job into a scheduled
+    # pipeline: extract → load to Delta Lake → retrain recommendations,
+    # repeating forever. 0 (default) preserves the original run-once
+    # behaviour used by `docker compose up`.
+    import time
+    import traceback
+
+    interval_min = int(os.environ.get("ETL_INTERVAL_MINUTES", "0"))
+
+    while True:
+        try:
+            run_etl()
+            # Refresh recommendations right after new data lands so scores
+            # never lag more than one interval behind platform activity.
+            if os.environ.get("RUN_RECOMMENDER_AFTER_ETL", "0") == "1":
+                from recommender import compute_recommendations
+                compute_recommendations()
+        except Exception:
+            # In scheduled mode a transient DB outage shouldn't kill the
+            # container — log and retry next tick. In one-shot mode,
+            # surface the failure to Docker via non-zero exit.
+            if interval_min <= 0:
+                raise
+            traceback.print_exc()
+
+        if interval_min <= 0:
+            break
+        print(f"Sleeping {interval_min} min until next pipeline run…")
+        time.sleep(interval_min * 60)

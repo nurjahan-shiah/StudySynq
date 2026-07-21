@@ -131,6 +131,19 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [courseSearch]);
 
+  // US-F.1 — CSV export for oversight/reporting
+  const exportCsv = useCallback(async (kind: "users" | "courses") => {
+    const r = await fetch(`${API}/admin/${kind}/export`, { headers: authHeaders() });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `studysync-${kind}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   useEffect(() => { if (tab === "courses") fetchCourses(); }, [tab, fetchCourses]);
@@ -317,6 +330,17 @@ export default function AdminDashboard() {
                 <option value="student">Student</option>
                 <option value="admin">Admin</option>
               </select>
+              <button
+                onClick={() => exportCsv("users")}
+                title="Download as CSV"
+                style={{
+                  padding: "7px 14px", borderRadius: 7, border: "1px solid #d1d5db",
+                  fontSize: 13, fontWeight: 500, cursor: "pointer",
+                  background: "#fff", color: "#374151", whiteSpace: "nowrap",
+                }}
+              >
+                ⬇ Export CSV
+              </button>
             </div>
 
             {/* Table */}
@@ -451,6 +475,17 @@ export default function AdminDashboard() {
                 }}
               >
                 + Add course
+              </button>
+              <button
+                onClick={() => exportCsv("courses")}
+                title="Download as CSV"
+                style={{
+                  padding: "7px 14px", borderRadius: 7, border: "1px solid #d1d5db",
+                  fontSize: 13, fontWeight: 500, cursor: "pointer",
+                  background: "#fff", color: "#374151", whiteSpace: "nowrap",
+                }}
+              >
+                ⬇ Export CSV
               </button>
             </div>
 

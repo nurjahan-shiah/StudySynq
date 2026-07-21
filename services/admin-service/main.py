@@ -408,6 +408,8 @@ async def list_users(
     search: Optional[str] = Query(None),
     role: Optional[str] = Query(None),
     active_only: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
@@ -429,6 +431,8 @@ async def list_users(
 
     rows = (
         q.order_by(User.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -785,6 +789,73 @@ async def get_audit_log(
 # ============================================================================
 # US-F.2 — Moderation Console & Audit Log
 # ============================================================================
+
+# ============================================================================
+# US-F.1 — CSV export for platform oversight
+# ============================================================================
+
+import csv
+import io
+from fastapi.responses import StreamingResponse
+
+
+def _csv_response(header: list[str], rows, filename: str) -> StreamingResponse:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/admin/users/export")
+async def export_users_csv(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """Download the full user list as CSV (US-F.1)."""
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    rows = [
+        (
+            str(u.id),
+            u.name,
+            u.email,
+            u.role.value if hasattr(u.role, "value") else str(u.role),
+            bool(getattr(u, "is_active", True)),
+            u.created_at.isoformat() if u.created_at else "",
+        )
+        for u in users
+    ]
+    log_action(db, current_user["user_id"], "export_users_csv", "all")
+    db.commit()
+    return _csv_response(
+        ["id", "name", "email", "role", "is_active", "created_at"],
+        rows, "studysync-users.csv",
+    )
+
+
+@app.get("/admin/courses/export")
+async def export_courses_csv(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """Download the course catalogue as CSV (US-F.1)."""
+    courses = db.query(Course).order_by(Course.course_code).all()
+    rows = [
+        (str(c.id), c.course_code, c.course_name, c.department)
+        for c in courses
+    ]
+    log_action(db, current_user["user_id"], "export_courses_csv", "all")
+    db.commit()
+    return _csv_response(
+        ["id", "course_code", "course_name", "department"],
+        rows, "studysync-courses.csv",
+    )
+
 
 def _user_name(db: Session, user_id) -> str:
     u = db.query(User).filter(User.id == user_id).first()
