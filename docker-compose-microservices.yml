@@ -63,8 +63,8 @@ services:
   # Auth Service (Port 8001)
   auth-service:
     build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/auth-service/Dockerfile
     container_name: studysync-auth
     ports:
       - '8001:8001'
@@ -89,8 +89,8 @@ services:
   # Users Service (Port 8002)
   users-service:
     build:
-      context: ./services/users-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/users-service/Dockerfile
     container_name: studysync-users
     ports:
       - '8002:8002'
@@ -112,8 +112,8 @@ services:
   # Groups Service (Port 8003)
   groups-service:
     build:
-      context: ./services/groups-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/groups-service/Dockerfile
     container_name: studysync-groups
     ports:
       - '8003:8003'
@@ -134,8 +134,8 @@ services:
   # Sessions Service (Port 8004)
   sessions-service:
     build:
-      context: ./services/sessions-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/sessions-service/Dockerfile
     platform: linux/arm64
     container_name: studysync-sessions
     env_file:
@@ -160,8 +160,8 @@ services:
   # Resources Service (Port 8005)
   resources-service:
     build:
-      context: ./services/resources-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/resources-service/Dockerfile
     container_name: studysync-resources
     ports:
       - '8005:8005'
@@ -190,8 +190,8 @@ services:
   # Courses Service (Port 8006)
   courses-service:
     build:
-      context: ./services/courses-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/courses-service/Dockerfile
     container_name: studysync-courses
     ports:
       - '8006:8006'
@@ -212,8 +212,8 @@ services:
   # Admin Service (Port 8007)
   admin-service:
     build:
-      context: ./services/admin-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/admin-service/Dockerfile
     container_name: studysync-admin
     ports:
       - '8007:8007'
@@ -234,8 +234,8 @@ services:
   # Recommendations Service (Port 8008)
   recommendations-service:
     build:
-      context: ./services/recommendations-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/recommendations-service/Dockerfile
     container_name: studysync-recommendations
     ports:
       - '8008:8008'
@@ -259,8 +259,8 @@ services:
   # Notifications Service (Port 8009) — US-E.1
   notifications-service:
     build:
-      context: ./services/notifications-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/notifications-service/Dockerfile
     container_name: studysync-notifications
     ports:
       - '8009:8009'
@@ -281,8 +281,8 @@ services:
   # Announcements Service (Port 8010) — US-E.2
   announcements-service:
     build:
-      context: ./services/announcements-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/announcements-service/Dockerfile
     container_name: studysync-announcements
     ports:
       - '8010:8010'
@@ -304,8 +304,8 @@ services:
   # Tasks Service (Port 8011) — US-E.3
   tasks-service:
     build:
-      context: ./services/tasks-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/tasks-service/Dockerfile
     container_name: studysync-tasks
     ports:
       - "8011:8011"

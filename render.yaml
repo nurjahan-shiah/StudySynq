@@ -66,7 +66,7 @@ services:
     name: studysync-auth
     runtime: docker
     plan: free
-    dockerContext: ./services/auth-service
+    dockerContext: .
     dockerfilePath: ./services/auth-service/Dockerfile
     healthCheckPath: /auth/health
     envVars:
@@ -92,7 +92,7 @@ services:
     name: studysync-users
     runtime: docker
     plan: free
-    dockerContext: ./services/users-service
+    dockerContext: .
     dockerfilePath: ./services/users-service/Dockerfile
     healthCheckPath: /users/health
     envVars:
@@ -112,7 +112,7 @@ services:
     name: studysync-groups
     runtime: docker
     plan: free
-    dockerContext: ./services/groups-service
+    dockerContext: .
     dockerfilePath: ./services/groups-service/Dockerfile
     healthCheckPath: /groups/health
     envVars:
@@ -130,7 +130,7 @@ services:
     name: studysync-sessions
     runtime: docker
     plan: free
-    dockerContext: ./services/sessions-service
+    dockerContext: .
     dockerfilePath: ./services/sessions-service/Dockerfile
     healthCheckPath: /sessions/health
     envVars:
@@ -150,7 +150,7 @@ services:
     name: studysync-resources
     runtime: docker
     plan: free
-    dockerContext: ./services/resources-service
+    dockerContext: .
     dockerfilePath: ./services/resources-service/Dockerfile
     healthCheckPath: /resources/health
     envVars:
@@ -176,7 +176,7 @@ services:
     name: studysync-courses
     runtime: docker
     plan: free
-    dockerContext: ./services/courses-service
+    dockerContext: .
     dockerfilePath: ./services/courses-service/Dockerfile
     healthCheckPath: /courses/health
     envVars:
@@ -194,7 +194,7 @@ services:
     name: studysync-admin
     runtime: docker
     plan: free
-    dockerContext: ./services/admin-service
+    dockerContext: .
     dockerfilePath: ./services/admin-service/Dockerfile
     healthCheckPath: /admin/health
     envVars:
@@ -212,7 +212,7 @@ services:
     name: studysync-recommendations
     runtime: docker
     plan: free
-    dockerContext: ./services/recommendations-service
+    dockerContext: .
     dockerfilePath: ./services/recommendations-service/Dockerfile
     healthCheckPath: /recommendations/health
     envVars:
@@ -232,7 +232,7 @@ services:
     name: studysync-notifications
     runtime: docker
     plan: free
-    dockerContext: ./services/notifications-service
+    dockerContext: .
     dockerfilePath: ./services/notifications-service/Dockerfile
     healthCheckPath: /notifications/health
     envVars:
@@ -250,7 +250,7 @@ services:
     name: studysync-announcements
     runtime: docker
     plan: free
-    dockerContext: ./services/announcements-service
+    dockerContext: .
     dockerfilePath: ./services/announcements-service/Dockerfile
     healthCheckPath: /announcements/health
     envVars:
@@ -270,7 +270,7 @@ services:
     name: studysync-tasks
     runtime: docker
     plan: free
-    dockerContext: ./services/tasks-service
+    dockerContext: .
     dockerfilePath: ./services/tasks-service/Dockerfile
     healthCheckPath: /tasks/health
     envVars:
