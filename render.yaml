@@ -282,27 +282,7 @@ services:
         value: info
       - key: SERVICE_PORT
         value: "8011"
-
-  # ── ETL + Recommender pipeline (US-F.3 / US-F.4) ──────────────────────
-  # Background worker: no public URL, no inbound HTTP, just runs the loop
-  # we already built (ETL_INTERVAL_MINUTES) so recommendations stay fresh
-  # without needing Render's paid Cron Jobs.
-  - type: worker
-    name: studysync-etl
-    runtime: docker
-    plan: free
-    dockerContext: ./datalake
-    dockerfilePath: ./datalake/Dockerfile.etl
-    dockerCommand: python3 -u etl_pipeline.py
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: DELTA_LAKE_PATH
-        value: /data/delta-lake
-      - key: ETL_INTERVAL_MINUTES
-        value: "15"
-      - key: RUN_RECOMMENDER_AFTER_ETL
-        value: "1"
+        
 
 # ─────────────────────────────────────────────────────────────────────────
 # Frontend (deploy separately on Vercel — not part of this blueprint):
