@@ -89,9 +89,23 @@ if __name__ == "__main__":
     # repeating forever. 0 (default) preserves the original run-once
     # behaviour used by `docker compose up`.
     import time
+    import signal
     import traceback
 
     interval_min = int(os.environ.get("ETL_INTERVAL_MINUTES", "0"))
+
+    _shutdown = False
+
+    def _handle_sigterm(signum, frame):
+        # `docker compose down`/`stop` sends SIGTERM and waits ~10s before
+        # SIGKILLing. Without this, a container asleep in time.sleep() never
+        # notices and gets force-killed (exit 137). Sleeping in 1s ticks
+        # below lets us notice this flag quickly and exit(0) cleanly instead.
+        global _shutdown
+        _shutdown = True
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGINT, _handle_sigterm)
 
     while True:
         try:
@@ -109,7 +123,13 @@ if __name__ == "__main__":
                 raise
             traceback.print_exc()
 
-        if interval_min <= 0:
+        if interval_min <= 0 or _shutdown:
             break
+
         print(f"Sleeping {interval_min} min until next pipeline run…")
-        time.sleep(interval_min * 60)
+        for _ in range(interval_min * 60):
+            if _shutdown:
+                break
+            time.sleep(1)
+
+    print("ETL worker shutting down cleanly.")

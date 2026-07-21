@@ -8,7 +8,7 @@ services:
   db:
     image: postgres:16
     platform: linux/arm64
-    container_name: studysync-db
+    container_name: studysynq-db
     environment:
       POSTGRES_DB: studysync
       POSTGRES_USER: admin
@@ -18,12 +18,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U admin']
+      test: ['CMD-SHELL', 'pg_isready -U admin -d studysync -d studysync']
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - studysync-network
+      - studysynq-network
 
   # ========================================================================
   # API GATEWAY (Port 8000 - Single Entry Point)
@@ -33,7 +33,7 @@ services:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
-    container_name: studysync-gateway
+    container_name: studysynq-gateway
     ports:
       - '8000:8000'
     depends_on:
@@ -53,7 +53,7 @@ services:
       ALGORITHM: ${ALGORITHM:-HS256}
       LOG_LEVEL: info
     networks:
-      - studysync-network
+      - studysynq-network
     restart: 'unless-stopped'
 
   # ========================================================================
@@ -65,7 +65,7 @@ services:
     build:
       context: .
       dockerfile: services/auth-service/Dockerfile
-    container_name: studysync-auth
+    container_name: studysynq-auth
     ports:
       - '8001:8001'
     depends_on:
@@ -83,7 +83,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Users Service (Port 8002)
@@ -91,7 +91,7 @@ services:
     build:
       context: .
       dockerfile: services/users-service/Dockerfile
-    container_name: studysync-users
+    container_name: studysynq-users
     ports:
       - '8002:8002'
     depends_on:
@@ -106,7 +106,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Groups Service (Port 8003)
@@ -114,7 +114,7 @@ services:
     build:
       context: .
       dockerfile: services/groups-service/Dockerfile
-    container_name: studysync-groups
+    container_name: studysynq-groups
     ports:
       - '8003:8003'
     depends_on:
@@ -128,7 +128,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Sessions Service (Port 8004)
@@ -137,7 +137,7 @@ services:
       context: .
       dockerfile: services/sessions-service/Dockerfile
     platform: linux/arm64
-    container_name: studysync-sessions
+    container_name: studysynq-sessions
     env_file:
       - .env
     ports:
@@ -154,7 +154,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: 'no'
 
   # Resources Service (Port 8005)
@@ -162,7 +162,7 @@ services:
     build:
       context: .
       dockerfile: services/resources-service/Dockerfile
-    container_name: studysync-resources
+    container_name: studysynq-resources
     ports:
       - '8005:8005'
     depends_on:
@@ -184,7 +184,7 @@ services:
       - ./shared:/shared:ro
       - resources_data:/data/resources
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Courses Service (Port 8006)
@@ -192,7 +192,7 @@ services:
     build:
       context: .
       dockerfile: services/courses-service/Dockerfile
-    container_name: studysync-courses
+    container_name: studysynq-courses
     ports:
       - '8006:8006'
     depends_on:
@@ -206,7 +206,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Admin Service (Port 8007)
@@ -214,7 +214,7 @@ services:
     build:
       context: .
       dockerfile: services/admin-service/Dockerfile
-    container_name: studysync-admin
+    container_name: studysynq-admin
     ports:
       - '8007:8007'
     depends_on:
@@ -228,7 +228,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Recommendations Service (Port 8008)
@@ -236,7 +236,7 @@ services:
     build:
       context: .
       dockerfile: services/recommendations-service/Dockerfile
-    container_name: studysync-recommendations
+    container_name: studysynq-recommendations
     ports:
       - '8008:8008'
     depends_on:
@@ -253,7 +253,7 @@ services:
       - ./shared:/shared:ro
       - delta_lake_data:/data/delta-lake
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Notifications Service (Port 8009) — US-E.1
@@ -261,7 +261,7 @@ services:
     build:
       context: .
       dockerfile: services/notifications-service/Dockerfile
-    container_name: studysync-notifications
+    container_name: studysynq-notifications
     ports:
       - '8009:8009'
     depends_on:
@@ -275,7 +275,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Announcements Service (Port 8010) — US-E.2
@@ -283,7 +283,7 @@ services:
     build:
       context: .
       dockerfile: services/announcements-service/Dockerfile
-    container_name: studysync-announcements
+    container_name: studysynq-announcements
     ports:
       - '8010:8010'
     depends_on:
@@ -298,7 +298,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # Tasks Service (Port 8011) — US-E.3
@@ -306,7 +306,7 @@ services:
     build:
       context: .
       dockerfile: services/tasks-service/Dockerfile
-    container_name: studysync-tasks
+    container_name: studysynq-tasks
     ports:
       - "8011:8011"
     depends_on:
@@ -320,7 +320,7 @@ services:
     volumes:
       - ./shared:/shared:ro
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # ========================================================================
@@ -336,7 +336,7 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
         NEXT_PUBLIC_SUPABASE_BUCKET: resources
-    container_name: studysync-frontend
+    container_name: studysynq-frontend
     ports:
       - '3000:3000'
     depends_on:
@@ -346,7 +346,7 @@ services:
       CORS_ORIGINS: https://adelaide-sphere-deals-costumes.trycloudflare.com
       NODE_ENV: production
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   # ========================================================================
@@ -357,7 +357,7 @@ services:
     build:
       context: ./datalake
       dockerfile: Dockerfile.etl
-    container_name: studysync-etl
+    container_name: studysynq-etl
     command: python3 -u etl_pipeline.py
     depends_on:
       db:
@@ -372,14 +372,14 @@ services:
     volumes:
       - delta_lake_data:/data/delta-lake
     networks:
-      - studysync-network
+      - studysynq-network
     restart: unless-stopped
 
   recommender:
     build:
       context: ./datalake
       dockerfile: Dockerfile.etl
-    container_name: studysync-recommender
+    container_name: studysynq-recommender
     command: python recommender.py
     depends_on:
       db:
@@ -392,7 +392,7 @@ services:
     volumes:
       - delta_lake_data:/data/delta-lake
     networks:
-      - studysync-network
+      - studysynq-network
     restart: 'no'
 
 # ============================================================================
@@ -400,7 +400,7 @@ services:
 # ============================================================================
 
 networks:
-  studysync-network:
+  studysynq-network:
     driver: bridge
 
 # ============================================================================

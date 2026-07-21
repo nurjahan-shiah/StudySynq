@@ -150,7 +150,7 @@ function ProductPreview() {
           background: "var(--card-bg)", padding: "3px 10px", borderRadius: 6,
           border: "1px solid var(--border)",
         }}>
-          studysync.app/dashboard
+          studysynq.app/dashboard
         </span>
       </div>
 
@@ -372,7 +372,7 @@ export default function Home() {
   ];
 
   const steps = [
-    { n: "1", title: "Add your courses",   desc: "Drop in your class list and StudySync builds your workspace instantly.", color: "var(--ss-blue)" },
+    { n: "1", title: "Add your courses",   desc: "Drop in your class list and StudySynq builds your workspace instantly.", color: "var(--ss-blue)" },
     { n: "2", title: "Find your people",   desc: "Get matched into study groups with classmates who study like you do.", color: "var(--ss-green)" },
     { n: "3", title: "Plan your sessions", desc: "Schedule sessions, split tasks, and keep everyone accountable.", color: "var(--ss-yellow)" },
     { n: "4", title: "Sync & succeed",     desc: "Smart recommendations keep you on track right up to exam day.", color: "var(--ss-red)" },
@@ -414,7 +414,7 @@ export default function Home() {
       cta: "Go Pro", href: "/signup", highlight: true,
     },
     {
-      name: "Institution", price: "Custom", tagline: "Roll StudySync out across your whole faculty.",
+      name: "Institution", price: "Custom", tagline: "Roll StudySynq out across your whole faculty.",
       features: [
         "Admin console, moderation & audit log",
         "Platform analytics powered by Delta Lake",
@@ -426,10 +426,10 @@ export default function Home() {
   ];
 
   const faqs = [
-    { q: "Is StudySync really free for students?", a: "Yes. The Student plan is free forever — unlimited groups, sessions, and recommendations. Pro adds more storage and the AI power features." },
+    { q: "Is StudySynq really free for students?", a: "Yes. The Student plan is free forever — unlimited groups, sessions, and recommendations. Pro adds more storage and the AI power features." },
     { q: "How do the AI recommendations work?", a: "Your course enrollments and group activity flow into our analytics layer, where a similarity model scores every study group against your courses. You only ever see groups that genuinely overlap with what you're taking." },
     { q: "Who can see the files I upload?", a: "Only members of the group you upload to. Group leaders and platform admins can moderate content, and every moderation action is recorded in an audit log." },
-    { q: "Can my university adopt StudySync officially?", a: "That's what the Institution plan is for — admin tooling, analytics, and roster integrations so a whole faculty can onboard in days, not months." },
+    { q: "Can my university adopt StudySynq officially?", a: "That's what the Institution plan is for — admin tooling, analytics, and roster integrations so a whole faculty can onboard in days, not months." },
   ];
 
   return (
@@ -505,7 +505,7 @@ export default function Home() {
           fontSize: "clamp(1rem, 2vw, 1.2rem)", color: "var(--text2)",
           maxWidth: 580, lineHeight: 1.7, marginBottom: 40,
         }}>
-          StudySync brings your classes, study groups, and resources into one seamless workspace —
+          StudySynq brings your classes, study groups, and resources into one seamless workspace —
           built for the way students actually learn.
         </p>
 
@@ -652,7 +652,7 @@ export default function Home() {
         </Reveal>
         <Reveal delay={150}>
           <p style={{ color: "var(--text2)", maxWidth: 440, marginBottom: 36, lineHeight: 1.7 }}>
-            Join thousands of students already using StudySync to study smarter and stress less.
+            Join thousands of students already using StudySynq to study smarter and stress less.
           </p>
         </Reveal>
         <Reveal delay={200}>
@@ -668,9 +668,9 @@ export default function Home() {
         borderTop: "1px solid var(--border)", color: "var(--text2)", fontSize: "0.85rem",
       }}>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>
-          study<span style={{ color: "var(--ss-red)" }}>Sync</span>
+          study<span style={{ color: "var(--ss-red)" }}>Synq</span>
         </div>
-        <p>© 2026 StudySync · Group 4 · York University</p>
+        <p>© 2026 StudySynq · Group 4 · York University</p>
       </footer>
     </>
   );
