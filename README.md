@@ -56,6 +56,7 @@ StudySync/
 │   ├── recommendations-service/ # ML-based group recommendations
 │   ├── notifications-service/ # Notification Centre (US-E.1)
 │   ├── announcements-service/ # Announcement Board (US-E.2)
+│   ├── tasks-service/        # Task Assigning & Tracking (US-E.3)
 │   └── admin-service/        # Platform administration
 ├── frontend/                 # Next.js App Router (TypeScript)
 │   └── src/app/
@@ -64,9 +65,10 @@ StudySync/
 │       ├── login/            # Login
 │       ├── dashboard/        # User dashboard
 │       ├── resources/        # Resources page
-│       ├── notifications/    # Notification Centre full page (US-E.1)
-│       ├── groups/           # Group list + detail w/ Announcement Board (US-E.2)
-│       └── admin/            # Admin console
+│       ├── notifications/    # Notification Centre + preferences (US-E.1/E.5)
+│       ├── groups/           # Group list + detail w/ Announcements & Tasks tabs (US-E.2/E.3)
+│       ├── tasks/            # Personal "My tasks" list (US-E.3)
+│       └── admin/            # Admin console, moderation + analytics (US-F.1/F.2/F.6)
 ├── shared/                   # Shared auth utilities across services
 ├── datalake/                 # Delta Lake analytics pipeline
 ├── tests/
@@ -74,7 +76,11 @@ StudySync/
 │       ├── signup/           # Signup endpoint tests
 │       ├── dashboard/        # Dashboard/token validation tests
 │       ├── notifications/    # Notification Centre tests (US-E.1)
-│       └── announcements/    # Announcement Board tests (US-E.2)
+│       ├── announcements/    # Announcement Board tests (US-E.2)
+│       ├── tasks/            # Task tracking tests (US-E.3)
+│       ├── preferences/      # Notification preferences tests (US-E.5)
+│       ├── moderation/       # Moderation console tests (US-F.2)
+│       └── analytics/        # Platform analytics tests (US-F.6)
 ├── docker-compose-microservices.yml
 └── README.md
 ```
@@ -152,6 +158,7 @@ This starts all containers:
 | Signup | http://localhost:3000/signup |
 | Dashboard | http://localhost:3000/dashboard |
 | Admin Console | http://localhost:3000/admin |
+| Health Dashboard| http://localhost:3000/admin/health|
 
 ---
 
@@ -192,6 +199,10 @@ bash tests/curl/signup/test_signup.sh
 bash tests/curl/dashboard/test_dashboard.sh
 bash tests/curl/notifications/test_notifications.sh
 bash tests/curl/announcements/test_announcements.sh
+bash tests/curl/tasks/test_tasks.sh
+bash tests/curl/preferences/test_preferences.sh
+bash tests/curl/moderation/test_moderation.sh
+bash tests/curl/analytics/test_analytics.sh
 ```
 
 ---
@@ -199,3 +210,5 @@ bash tests/curl/announcements/test_announcements.sh
 ## 📄 License
 
 Advanced Software Engineering (EECS 4314), York University, Summer 2026.
+
+---

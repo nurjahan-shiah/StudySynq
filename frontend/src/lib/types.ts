@@ -1,4 +1,4 @@
-export type UserRole = "student" | "group_leader" | "admin";
+export type UserRole = "student" | "admin";
 
 export interface AuthUser {
   user_id: string;
@@ -106,6 +106,15 @@ export interface UnreadCount {
   unread_count: number;
 }
 
+// US-E.5 — Notification Preferences
+export interface NotificationPreferences {
+  sessions: boolean;
+  announcements: boolean;
+  tasks: boolean;
+  resources: boolean;
+  group_activity: boolean;
+}
+
 // US-E.2 — Announcement Board
 export interface Announcement {
   id: string;
@@ -117,4 +126,26 @@ export interface Announcement {
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// US-E.3 — Task Assigning & Tracking
+export type TaskStatus = "todo" | "in_progress" | "completed";
+export type TaskPriority = "low" | "medium" | "high";
+
+export interface Task {
+  id: string;
+  group_id: string;
+  group_name: string;
+  assigned_by: string;
+  assigned_by_name: string;
+  assigned_to: string;
+  assigned_to_name: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }

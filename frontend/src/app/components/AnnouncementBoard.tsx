@@ -21,6 +21,27 @@ const T = {
   yellow: "var(--ss-yellow)",
 } as const;
 
+function cleanAIDraft(text: string, title?: string): string {
+  let cleaned = text
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/\[Your Name\]/gi, "")
+    .replace(/Best regards,\s*$/i, "")
+    .trim();
+
+  if (title?.trim()) {
+    const normalizedTitle = title.trim().toLowerCase();
+    const lines = cleaned.split("\n");
+    const firstLine = lines[0]?.trim().replace(/:$/, "").toLowerCase();
+
+    if (firstLine === normalizedTitle) {
+      cleaned = lines.slice(1).join("\n").trim();
+    }
+  }
+
+  return cleaned;
+}
+
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -42,6 +63,9 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
   const { data, loading, error, refetch } = useGroupAnnouncements(groupId);
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiStatus, setAiStatus] = useState("");
 
   const announcements = data ?? [];
 
@@ -60,6 +84,76 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
     setSaving(false);
     setForm(null);
     refetch();
+  }
+
+
+  async function improveWithAI() {
+    setAiStatus("Improve with AI button clicked...");
+    setAiError("");
+
+    if (!form) {
+      setAiError("Open the announcement form first.");
+      setAiStatus("");
+      return;
+    }
+
+    if (!form.message.trim()) {
+      setAiError("Type a rough announcement message first.");
+      setAiStatus("");
+      return;
+    }
+
+    const token = localStorage.getItem("ss_token");
+
+    if (!token) {
+      setAiError("You must be logged in to use AI drafting.");
+      setAiStatus("");
+      return;
+    }
+
+    setAiDrafting(true);
+    setAiStatus("Sending announcement draft to AI...");
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/groups/${groupId}/announcements/ai-draft`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: form.title,
+            rough_draft: form.message,
+            tone: "clear, friendly, and professional",
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail || "AI drafting failed.");
+      }
+
+      setForm((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          title: result.title || current.title,
+          message: cleanAIDraft(result.draft || current.message, result.title || current.title),
+        };
+      });
+
+      setAiStatus("AI draft received. Review it before posting.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "AI drafting failed.";
+      setAiError(message);
+      setAiStatus("");
+    } finally {
+      setAiDrafting(false);
+    }
   }
 
   async function togglePin(a: Announcement) {
@@ -130,6 +224,12 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
               fontFamily: "inherit",
             }}
           />
+          {aiStatus && (
+            <p style={{ color: T.text2, fontSize: 12, margin: "0 0 10px" }}>{aiStatus}</p>
+          )}
+          {aiError && (
+            <p style={{ color: T.red, fontSize: 12, margin: "0 0 10px" }}>{aiError}</p>
+          )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.text2, cursor: "pointer" }}>
               <input
@@ -140,7 +240,18 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
               📌 Pin this announcement
             </label>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setForm(null)} style={btn("ghost")} disabled={saving}>Cancel</button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  improveWithAI();
+                }}
+                style={btn("ghost")}
+                disabled={saving || aiDrafting}
+              >
+                {aiDrafting ? "Improving..." : "Improve with AI"}
+              </button>
+              <button onClick={() => setForm(null)} style={btn("ghost")} disabled={saving || aiDrafting}>Cancel</button>
               <button onClick={submitForm} style={btn("primary")} disabled={saving}>
                 {saving ? "Saving…" : form.id ? "Save changes" : "Post announcement"}
               </button>

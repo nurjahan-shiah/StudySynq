@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { MAJOR_GROUPS } from "@/lib/majors";
 import Navbar from "../components/Navbar";
 
-type Role = "student" | "group_leader" | "admin";
+type Role = "student" | "admin";
 
 interface PasswordStrength {
   minLength: boolean;
@@ -28,10 +29,20 @@ function isStrongEnough(s: PasswordStrength) {
 }
 
 const ROLES: { value: Role; label: string; desc: string; icon: string }[] = [
-  { value: "student",      label: "Student",      desc: "Join study groups and collaborate",  icon: "📚" },
-  { value: "group_leader", label: "Group Leader", desc: "Create and manage study groups",     icon: "🎯" },
-  { value: "admin",        label: "Admin",        desc: "Full platform management access",    icon: "⚙️" },
+  { value: "student", label: "Student", desc: "Join study groups and collaborate",  icon: "📚" },
+  { value: "admin",   label: "Admin",   desc: "Full platform management access",    icon: "⚙️" },
 ];
+
+// US-G.5 — AI Onboarding Course Suggestions (extends US-A.1)
+// Full major list now lives in @/lib/majors (shared with the group "intended major" field)
+const YEARS = ["1st year", "2nd year", "3rd year", "4th year", "5th year+"];
+
+interface SuggestedCourse {
+  id: string;
+  course_code: string;
+  course_name: string;
+  department: string;
+}
 
 function StrengthRow({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -71,6 +82,83 @@ function WelcomeModal({ name, role, onContinue }: { name: string; role: Role; on
   );
 }
 
+function SuggestedCoursesModal({
+  courses, note, selected, onToggle, onSkip, onEnroll, enrolling, loading,
+}: {
+  courses: SuggestedCourse[]; note: string | null; selected: Set<string>;
+  onToggle: (id: string) => void; onSkip: () => void; onEnroll: () => void;
+  enrolling: boolean; loading: boolean;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)",
+      backdropFilter: "blur(6px)", display: "flex",
+      alignItems: "center", justifyContent: "center", zIndex: 300, padding: 20,
+    }}>
+      <div className="ss-modal-anim" style={{
+        background: "var(--bg2)", border: "1px solid var(--border)",
+        borderRadius: 20, maxWidth: 440, width: "100%",
+        padding: "36px 32px", textAlign: "left",
+      }}>
+        <div style={{ fontSize: "2rem", marginBottom: 10, textAlign: "center" }}>✨</div>
+        <h2 style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--text)", marginBottom: 6, textAlign: "center" }}>
+          Suggested courses for you
+        </h2>
+        <p style={{ color: "var(--text2)", fontSize: "0.85rem", marginBottom: 18, textAlign: "center" }}>
+          Based on your program and year, here&apos;s a head start — pick the ones that match your schedule.
+        </p>
+
+        {note && (
+          <div style={{ background: "rgba(0,0,0,0.04)", border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: "0.78rem", color: "var(--text2)", marginBottom: 14 }}>
+            {note}
+          </div>
+        )}
+
+        {courses.length === 0 ? (
+          <p style={{ fontSize: "0.85rem", color: "var(--text2)", textAlign: "center", marginBottom: 18 }}>
+            {loading
+              ? "Finding courses that match your program…"
+              : "No matching courses found yet — you can browse and join courses later from your dashboard."}
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto", marginBottom: 18 }}>
+            {courses.map(c => (
+              <label key={c.id} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                borderRadius: 10, border: selected.has(c.id) ? "1.5px solid var(--ss-red)" : "1px solid var(--border)",
+                background: selected.has(c.id) ? "rgba(214,48,49,.06)" : "var(--bg3)",
+                cursor: "pointer",
+              }}>
+                <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
+                <div>
+                  <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--text)" }}>{c.course_code}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text2)" }}>{c.course_name}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={onSkip} style={{
+            flex: 1, padding: "12px", borderRadius: 10, border: "1px solid var(--border)",
+            background: "var(--bg3)", color: "var(--text2)", fontWeight: 600, fontSize: "0.88rem", cursor: "pointer",
+          }}>
+            Skip for now
+          </button>
+          <button
+            type="button" onClick={onEnroll} disabled={enrolling || selected.size === 0}
+            className="ss-btn-primary"
+            style={{ flex: 1, justifyContent: "center", padding: "12px", opacity: enrolling || selected.size === 0 ? 0.5 : 1 }}
+          >
+            {enrolling ? "Adding…" : `Add ${selected.size || ""} course${selected.size === 1 ? "" : "s"}`.trim()}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SignupPage() {
   const router = useRouter();
 
@@ -79,11 +167,22 @@ export default function SignupPage() {
   const [password, setPassword]               = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole]                       = useState<Role>("student");
+  const [program, setProgram]                 = useState("");
+  const [year, setYear]                       = useState("");
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState("");
   const [showWelcome, setShowWelcome]         = useState(false);
   const [registeredName, setRegisteredName]   = useState("");
   const [registeredRole, setRegisteredRole]   = useState<Role>("student");
+  const [registeredUserId, setRegisteredUserId] = useState("");
+
+  // US-G.5 — AI Onboarding Course Suggestions
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestedCourses, setSuggestedCourses] = useState<SuggestedCourse[]>([]);
+  const [suggestionNote, setSuggestionNote]   = useState<string | null>(null);
+  const [selectedCourses, setSelectedCourses] = useState<Set<string>>(new Set());
+  const [enrolling, setEnrolling]             = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   const strength       = checkPassword(password);
   const passwordsMatch = password === confirmPassword && confirmPassword !== "";
@@ -111,11 +210,63 @@ export default function SignupPage() {
 
       setRegisteredName(name);
       setRegisteredRole(role);
+      setRegisteredUserId(res.data!.user_id);
       setShowWelcome(true);
+
+      // US-G.5 — kick off course suggestions in the background for students
+      // who told us their program/year, so they're ready the moment the
+      // welcome modal is dismissed.
+      if (role === "student" && program && year) {
+        setSuggestionsLoading(true);
+        apiClient
+          .post<{ courses: SuggestedCourse[]; note: string | null }>(
+            "/users/onboarding/suggest-courses",
+            { program, year }
+          )
+          .then((sres) => {
+            if (sres.data) {
+              setSuggestedCourses(sres.data.courses);
+              setSuggestionNote(sres.data.note ?? null);
+            }
+          })
+          .catch(() => {
+            /* suggestions are a nice-to-have — silently skip on failure */
+          })
+          .finally(() => setSuggestionsLoading(false));
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function toggleCourse(id: string) {
+    setSelectedCourses(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function goToDashboard() {
+    setShowSuggestions(false);
+    router.push("/dashboard");
+  }
+
+  async function handleEnrollSelected() {
+    setEnrolling(true);
+    try {
+      await Promise.all(
+        Array.from(selectedCourses).map(courseId =>
+          apiClient.post(`/users/${registeredUserId}/enrollments?course_id=${courseId}`, {})
+        )
+      );
+    } catch {
+      /* best-effort — a failed enrollment here isn't fatal to onboarding */
+    } finally {
+      setEnrolling(false);
+      goToDashboard();
     }
   }
 
@@ -125,7 +276,27 @@ export default function SignupPage() {
         <WelcomeModal
           name={registeredName}
           role={registeredRole}
-          onContinue={() => { setShowWelcome(false); router.push("/dashboard"); }}
+          onContinue={() => {
+            setShowWelcome(false);
+            if (registeredRole === "student" && program && year) {
+              setShowSuggestions(true);
+            } else {
+              router.push("/dashboard");
+            }
+          }}
+        />
+      )}
+
+      {showSuggestions && (
+        <SuggestedCoursesModal
+          courses={suggestedCourses}
+          note={suggestionNote}
+          selected={selectedCourses}
+          onToggle={toggleCourse}
+          onSkip={goToDashboard}
+          onEnroll={handleEnrollSelected}
+          enrolling={enrolling}
+          loading={suggestionsLoading}
         />
       )}
 
@@ -194,6 +365,38 @@ export default function SignupPage() {
                   {ROLES.find(r => r.value === role)!.desc}
                 </p>
               </div>
+
+              {role === "student" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, color: "var(--text2)", marginBottom: 7 }}>
+                      Program <span style={{ fontWeight: 400 }}>(optional)</span>
+                    </label>
+                    <select value={program} onChange={e => setProgram(e.target.value)} className="ss-input">
+                      <option value="">Select program</option>
+                      {MAJOR_GROUPS.map(g => (
+                        <optgroup key={g.faculty} label={g.faculty}>
+                          {g.majors.map(m => <option key={m} value={m}>{m}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, color: "var(--text2)", marginBottom: 7 }}>
+                      Year <span style={{ fontWeight: 400 }}>(optional)</span>
+                    </label>
+                    <select value={year} onChange={e => setYear(e.target.value)} className="ss-input">
+                      <option value="">Select year</option>
+                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  {(program || year) && (
+                    <p style={{ gridColumn: "1 / -1", fontSize: "0.76rem", color: "var(--text2)", marginTop: -2 }}>
+                      We&apos;ll suggest a few courses that match this once your account is created.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, color: "var(--text2)", marginBottom: 7 }}>Password</label>

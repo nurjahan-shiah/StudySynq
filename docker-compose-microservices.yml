@@ -4,7 +4,7 @@ services:
   # ========================================================================
   # DATA TIER
   # ========================================================================
-  
+
   db:
     image: postgres:16
     platform: linux/arm64
@@ -14,11 +14,11 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secret
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ['CMD-SHELL', 'pg_isready -U admin']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,14 +28,14 @@ services:
   # ========================================================================
   # API GATEWAY (Port 8000 - Single Entry Point)
   # ========================================================================
-  
+
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
     container_name: studysync-gateway
     ports:
-      - "8000:8000"
+      - '8000:8000'
     depends_on:
       - auth-service
       - users-service
@@ -47,16 +47,19 @@ services:
       - recommendations-service
       - notifications-service
       - announcements-service
+      - tasks-service
     environment:
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
       LOG_LEVEL: info
     networks:
       - studysync-network
-    restart: "unless-stopped"
+    restart: 'unless-stopped'
 
   # ========================================================================
   # MICROSERVICES (Ports 8001-8008)
   # ========================================================================
-  
+
   # Auth Service (Port 8001)
   auth-service:
     build:
@@ -64,13 +67,17 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-auth
     ports:
-      - "8001:8001"
+      - '8001:8001'
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://admin:secret@db:5432/studysync
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       LOG_LEVEL: info
       SERVICE_PORT: 8001
     volumes:
@@ -86,7 +93,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-users
     ports:
-      - "8002:8002"
+      - '8002:8002'
     depends_on:
       db:
         condition: service_healthy
@@ -95,6 +102,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8002
+      GROQ_API_KEY: ${GROQ_API_KEY}
     volumes:
       - ./shared:/shared:ro
     networks:
@@ -108,7 +116,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-groups
     ports:
-      - "8003:8003"
+      - '8003:8003'
     depends_on:
       db:
         condition: service_healthy
@@ -128,12 +136,12 @@ services:
     build:
       context: ./services/sessions-service
       dockerfile: Dockerfile
-    platform: linux/arm64  
+    platform: linux/arm64
     container_name: studysync-sessions
     env_file:
       - .env
     ports:
-      - "8004:8004"
+      - '8004:8004'
     depends_on:
       db:
         condition: service_healthy
@@ -147,7 +155,7 @@ services:
       - ./shared:/shared:ro
     networks:
       - studysync-network
-    restart: "no"
+    restart: 'no'
 
   # Resources Service (Port 8005)
   resources-service:
@@ -156,7 +164,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-resources
     ports:
-      - "8005:8005"
+      - '8005:8005'
     depends_on:
       db:
         condition: service_healthy
@@ -165,15 +173,19 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8005
-      SUPABASE_URL: https://kodfszmzawzydyusebjt.supabase.co
-      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      # Server-only key used to delete storage objects when a resource is
+      # removed — never shipped to the browser.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_BUCKET: ${SUPABASE_BUCKET:-resources}
     volumes:
       - ./shared:/shared:ro
       - resources_data:/data/resources
     networks:
       - studysync-network
     restart: unless-stopped
-    
+
   # Courses Service (Port 8006)
   courses-service:
     build:
@@ -181,7 +193,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-courses
     ports:
-      - "8006:8006"
+      - '8006:8006'
     depends_on:
       db:
         condition: service_healthy
@@ -203,7 +215,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-admin
     ports:
-      - "8007:8007"
+      - '8007:8007'
     depends_on:
       db:
         condition: service_healthy
@@ -225,7 +237,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-recommendations
     ports:
-      - "8008:8008"
+      - '8008:8008'
     depends_on:
       db:
         condition: service_healthy
@@ -250,7 +262,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-notifications
     ports:
-      - "8009:8009"
+      - '8009:8009'
     depends_on:
       db:
         condition: service_healthy
@@ -272,7 +284,7 @@ services:
       dockerfile: Dockerfile
     container_name: studysync-announcements
     ports:
-      - "8010:8010"
+      - '8010:8010'
     depends_on:
       db:
         condition: service_healthy
@@ -281,6 +293,29 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8010
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysync-network
+    restart: unless-stopped
+
+  # Tasks Service (Port 8011) — US-E.3
+  tasks-service:
+    build:
+      context: ./services/tasks-service
+      dockerfile: Dockerfile
+    container_name: studysync-tasks
+    ports:
+      - "8011:8011"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysync
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8011
     volumes:
       - ./shared:/shared:ro
     networks:
@@ -290,24 +325,25 @@ services:
   # ========================================================================
   # FRONTEND
   # ========================================================================
-  
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
-        NEXT_PUBLIC_SUPABASE_URL: https://kodfszmzawzydyusebjt.supabase.co
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
         NEXT_PUBLIC_SUPABASE_BUCKET: resources
     container_name: studysync-frontend
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       - api-gateway
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
-      NODE_ENV: development
+      CORS_ORIGINS: https://adelaide-sphere-deals-costumes.trycloudflare.com
+      NODE_ENV: production
     networks:
       - studysync-network
     restart: unless-stopped
@@ -315,7 +351,7 @@ services:
   # ========================================================================
   # ETL & DATA PROCESSING JOBS
   # ========================================================================
-  
+
   etl:
     build:
       context: ./datalake
@@ -328,11 +364,15 @@ services:
     environment:
       DATABASE_URL: postgresql://admin:secret@db:5432/studysync
       DELTA_LAKE_PATH: /data/delta-lake
+      # Scheduled pipeline: re-run ETL + recommender every N minutes.
+      # Set to 0 for the original one-shot behaviour.
+      ETL_INTERVAL_MINUTES: ${ETL_INTERVAL_MINUTES:-15}
+      RUN_RECOMMENDER_AFTER_ETL: "1"
     volumes:
       - delta_lake_data:/data/delta-lake
     networks:
       - studysync-network
-    restart: "no"
+    restart: unless-stopped
 
   recommender:
     build:
@@ -352,7 +392,7 @@ services:
       - delta_lake_data:/data/delta-lake
     networks:
       - studysync-network
-    restart: "no"
+    restart: 'no'
 
 # ============================================================================
 # NETWORKS
@@ -379,5 +419,3 @@ volumes:
 # ============================================================================
 
 #environment:
-#SUPABASE_URL=https://kodfszmzawzydyusebjt.supabase.co
-#SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZGZzem16YXd6eWR5dXNlYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDcxODMsImV4cCI6MjA5Njc4MzE4M30.uLciLg3u2ycho8SudmOhglZJGMfbualjhfypV6bNO78

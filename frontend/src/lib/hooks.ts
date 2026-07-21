@@ -5,7 +5,7 @@ import { apiClient } from "./apiClient";
 
 // ── inline types (avoids the ./types import that TS can't resolve yet) ────────
 
-export type UserRole = "student" | "group_leader" | "admin";
+export type UserRole = "student" | "admin";
 
 export interface UserProfile {
   id: string;
@@ -27,6 +27,7 @@ export interface GroupDetail {
   name: string;
   description: string | null;
   is_public: boolean;
+  intended_major: string | null;
   created_by: string;
   created_at: string;
   member_count: number;
@@ -53,6 +54,7 @@ export interface StudySession {
   description: string | null;
   created_by: string;
   created_at: string;
+  is_cancelled: boolean;
 }
 
 export interface SessionWithGroup extends StudySession {
@@ -116,6 +118,27 @@ export interface Announcement {
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type TaskStatus = "todo" | "in_progress" | "completed";
+export type TaskPriority = "low" | "medium" | "high";
+
+export interface Task {
+  id: string;
+  group_id: string;
+  group_name: string;
+  assigned_by: string;
+  assigned_by_name: string;
+  assigned_to: string;
+  assigned_to_name: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 // ── Generic fetch hook ────────────────────────────────────────────────────────
@@ -197,6 +220,16 @@ export function useGroupMembers(groupId: string) {
 
 export function useGroupAnnouncements(groupId: string) {
   return useFetch<Announcement[]>(`/groups/${groupId}/announcements`, !groupId);
+}
+
+// ── Tasks (US-E.3) ────────────────────────────────────────────────────────────
+
+export function useGroupTasks(groupId: string) {
+  return useFetch<Task[]>(`/groups/${groupId}/tasks`, !groupId);
+}
+
+export function useMyTasks(userId: string) {
+  return useFetch<Task[]>(`/tasks/user/${userId}`, !userId);
 }
 
 // ── Available groups ──────────────────────────────────────────────────────────
@@ -318,6 +351,58 @@ export function useRecommendations() {
 
 export function useAdminStats() {
   return useFetch<AdminStats>("/admin/stats");
+}
+
+// ── Moderation console (US-F.2) ──────────────────────────────────────────────
+
+export interface ModerationGroup {
+  id: string; name: string; description: string | null;
+  created_by: string; creator_name: string; member_count: number; created_at: string;
+}
+export interface ModerationResource {
+  id: string; file_name: string; file_type: string;
+  uploaded_by: string; uploader_name: string; group_id: string; group_name: string; created_at: string;
+}
+export interface ModerationAnnouncement {
+  id: string; title: string; message: string;
+  author_id: string; author_name: string; group_id: string; group_name: string;
+  is_pinned: boolean; created_at: string;
+}
+export interface ModerationLog {
+  id: string; admin_id: string; admin_name: string;
+  entity_type: string; entity_id: string; action: string;
+  reason: string | null; target_title: string | null; created_at: string;
+}
+
+export function useModerationGroups() { return useFetch<ModerationGroup[]>("/admin/moderation/groups"); }
+export function useModerationResources() { return useFetch<ModerationResource[]>("/admin/moderation/resources"); }
+export function useModerationAnnouncements() { return useFetch<ModerationAnnouncement[]>("/admin/moderation/announcements"); }
+export function useModerationAuditLog() { return useFetch<ModerationLog[]>("/admin/moderation/audit-logs"); }
+
+// ── Platform analytics (US-F.6) ──────────────────────────────────────────────
+
+export interface AnalyticsCourse {
+  course_code: string; course_name: string;
+  group_count: number; session_count: number; resource_count: number; member_count: number;
+}
+export interface AnalyticsGroup {
+  name: string; member_count: number; session_count: number; resource_count: number;
+}
+export interface AnalyticsActivity {
+  type: string; title: string; created_at: string | null;
+}
+export interface AnalyticsOverview {
+  total_users: number; active_users: number;
+  total_groups: number; active_groups: number;
+  sessions_this_week: number; total_resources: number;
+  total_announcements: number; total_tasks: number;
+  most_active_courses: AnalyticsCourse[];
+  most_active_groups: AnalyticsGroup[];
+  recent_activity: AnalyticsActivity[];
+}
+
+export function useAnalyticsOverview() {
+  return useFetch<AnalyticsOverview>("/admin/analytics/overview");
 }
 
 // ── Sessions for a single group (US-C.3) ─────────────────────────────────────

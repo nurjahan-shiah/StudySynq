@@ -102,6 +102,18 @@ export default function NotificationsPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, color: T.text, margin: 0 }}>Notifications</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => router.push("/notifications/preferences")}
+              title="Notification preferences"
+              style={{
+                width: 40, height: 40, borderRadius: 10, background: T.bg3,
+                border: `1px solid ${T.border}`, color: T.text2, cursor: "pointer",
+                fontSize: "1.05rem", display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              ⚙
+            </button>
             <NotificationBell />
             <ProfileButton />
           </div>

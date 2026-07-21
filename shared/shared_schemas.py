@@ -7,7 +7,14 @@ Defines the contract between services and clients.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _coerce_date_only(v):
+    """Accept a date-only 'YYYY-MM-DD' (e.g. from an <input type=date>) as midnight."""
+    if isinstance(v, str) and len(v) == 10 and v.count("-") == 2:
+        return v + "T00:00:00"
+    return v
 
 # ============================================================================
 # Auth Schemas
@@ -18,6 +25,29 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     role: str = "student"
+
+    @field_validator("name")
+    @classmethod
+    def name_reasonable(cls, v: str) -> str:
+        v = v.strip()
+        if not (1 <= len(v) <= 100):
+            raise ValueError("Name must be 1-100 characters")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        # US-A.1 acceptance: password strength rules enforced at the schema
+        # boundary so every service inherits them.
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one number")
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -68,6 +98,19 @@ class CourseResponse(CourseBase):
         from_attributes = True
 
 # ============================================================================
+# US-G.5 — AI Onboarding Course Suggestions
+# ============================================================================
+
+class OnboardingSuggestionRequest(BaseModel):
+    program: str
+    year: str
+
+class OnboardingSuggestionResponse(BaseModel):
+    courses: list[CourseResponse]
+    note: Optional[str] = None
+
+# ============================================================================
+
 # Group Schemas
 # ============================================================================
 
@@ -75,6 +118,7 @@ class GroupBase(BaseModel):
     name: str
     description: Optional[str] = None
     is_public: bool = True
+    intended_major: Optional[str] = None
 
 class GroupCreate(GroupBase):
     course_ids: Optional[List[UUID]] = []
@@ -83,6 +127,7 @@ class GroupUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_public: Optional[bool] = None
+    intended_major: Optional[str] = None
 
 class GroupResponse(GroupBase):
     id: UUID
@@ -226,6 +271,67 @@ class AnnouncementResponse(BaseModel):
     is_pinned: bool
     created_at: datetime
     updated_at: datetime
+
+# ============================================================================
+# Task Schemas (US-E.3 @author: Ahmed)
+# ============================================================================
+
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: str = "medium"
+    assigned_to: UUID
+
+    _coerce_due = field_validator("due_date", mode="before")(_coerce_date_only)
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    status: Optional[str] = None
+
+    _coerce_due = field_validator("due_date", mode="before")(_coerce_date_only)
+
+class TaskStatusUpdate(BaseModel):
+    status: str
+
+# ============================================================================
+# Notification Preference Schemas (US-E.5 @author: Ahmed)
+# ============================================================================
+
+class NotificationPreferencesResponse(BaseModel):
+    sessions: bool
+    announcements: bool
+    tasks: bool
+    resources: bool
+    group_activity: bool
+
+class NotificationPreferencesUpdate(BaseModel):
+    sessions: Optional[bool] = None
+    announcements: Optional[bool] = None
+    tasks: Optional[bool] = None
+    resources: Optional[bool] = None
+    group_activity: Optional[bool] = None
+
+class TaskResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    group_name: str
+    assigned_by: UUID
+    assigned_by_name: str
+    assigned_to: UUID
+    assigned_to_name: str
+    title: str
+    description: Optional[str] = None
+    status: str
+    priority: str
+    due_date: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
 
 # ============================================================================
 # Error Schemas
