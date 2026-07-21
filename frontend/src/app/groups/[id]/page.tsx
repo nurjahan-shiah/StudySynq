@@ -12,6 +12,7 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
 import { useGroup, useGroupMembers } from "@/lib/hooks";
+import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
 
@@ -43,6 +44,9 @@ export default function GroupDetailPage() {
   const [userId, setUserId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
+  const [memberActionId, setMemberActionId] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [memberStatus, setMemberStatus] = useState("");
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -55,10 +59,63 @@ export default function GroupDetailPage() {
   }, [router]);
 
   const { data: group, loading: groupLoading } = useGroup(groupId);
-  const { data: members } = useGroupMembers(groupId);
+  const { data: members, refetch: refetchMembers } = useGroupMembers(groupId);
 
   const me = (members ?? []).find((m) => m.user_id === userId);
   const isLeader = me?.membership_role === "leader" || isAdmin;
+
+
+  async function removeGroupMember(memberId: string, memberName: string) {
+    if (!isLeader) return;
+
+    if (memberId === userId) {
+      setMemberError("You cannot remove yourself from the group.");
+      return;
+    }
+
+    if (!confirm(`Remove ${memberName} from this group?`)) return;
+
+    setMemberActionId(memberId);
+    setMemberError("");
+    setMemberStatus("");
+
+    try {
+      await apiClient.delete(`/groups/${groupId}/members/${memberId}`);
+      setMemberStatus(`${memberName} was removed from the group.`);
+      refetchMembers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to remove member.";
+      setMemberError(message);
+    } finally {
+      setMemberActionId("");
+    }
+  }
+
+  async function changeMemberRole(memberId: string, memberName: string, nextRole: "member" | "leader") {
+    if (!isLeader) return;
+
+    if (memberId === userId) {
+      setMemberError("You cannot change your own role.");
+      return;
+    }
+
+    setMemberActionId(memberId);
+    setMemberError("");
+    setMemberStatus("");
+
+    try {
+      await apiClient.patch(`/groups/${groupId}/members/${memberId}/role`, {
+        membership_role: nextRole,
+      });
+      setMemberStatus(`${memberName} is now a ${nextRole}.`);
+      refetchMembers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update member role.";
+      setMemberError(message);
+    } finally {
+      setMemberActionId("");
+    }
+  }
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
@@ -139,28 +196,124 @@ export default function GroupDetailPage() {
         )}
 
         {tab === "members" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 520 }}>
-            {(members ?? []).map((m) => (
-              <div key={m.user_id} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px",
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760 }}>
+            <div style={{
+              background: T.card,
+              border: `1px solid ${T.border}`,
+              borderRadius: 12,
+              padding: 16,
+            }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: "0 0 6px" }}>
+                Group Leader Management Console
+              </h2>
+              <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.5 }}>
+                View the full member roster, manage member roles, and remove members from the group.
+                {isLeader ? " Leader controls are enabled for your account." : " Only group leaders and admins can manage members."}
+              </p>
+            </div>
+
+            {memberStatus && (
+              <p style={{ fontSize: 13, color: T.text2, margin: 0 }}>{memberStatus}</p>
+            )}
+
+            {memberError && (
+              <p style={{ fontSize: 13, color: T.red, margin: 0 }}>{memberError}</p>
+            )}
+
+            {(members ?? []).length === 0 ? (
+              <div style={{
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 12,
+                padding: 18,
+                color: T.text2,
+                fontSize: 13,
               }}>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: T.text, margin: 0 }}>{m.user_name}</p>
-                  <p style={{ fontSize: 11, color: T.text2, margin: 0 }}>{m.user_email}</p>
-                </div>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-                  textTransform: "uppercase", letterSpacing: "0.04em",
-                  background: m.membership_role === "leader" ? `${T.red}1a` : T.bg3,
-                  color: m.membership_role === "leader" ? T.red : T.text2,
-                }}>
-                  {m.membership_role}
-                </span>
+                No members found.
               </div>
-            ))}
+            ) : (
+              (members ?? []).map((m) => {
+                const isCurrentUser = m.user_id === userId;
+                const busy = memberActionId === m.user_id;
+                const nextRole = m.membership_role === "leader" ? "member" : "leader";
+
+                return (
+                  <div key={m.user_id} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background: T.card,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                    gap: 14,
+                  }}>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: T.text, margin: 0 }}>
+                        {m.user_name} {isCurrentUser ? "(You)" : ""}
+                      </p>
+                      <p style={{ fontSize: 11, color: T.text2, margin: "2px 0 0" }}>{m.user_email}</p>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 20,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        background: m.membership_role === "leader" ? `${T.red}1a` : T.bg3,
+                        color: m.membership_role === "leader" ? T.red : T.text2,
+                      }}>
+                        {m.membership_role}
+                      </span>
+
+                      {isLeader && !isCurrentUser && (
+                        <>
+                          <button
+                            onClick={() => changeMemberRole(m.user_id, m.user_name, nextRole)}
+                            disabled={busy}
+                            style={{
+                              padding: "5px 9px",
+                              borderRadius: 7,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              border: `1px solid ${T.border}`,
+                              background: "transparent",
+                              color: T.text,
+                              cursor: busy ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {busy ? "Working..." : nextRole === "leader" ? "Make leader" : "Make member"}
+                          </button>
+
+                          <button
+                            onClick={() => removeGroupMember(m.user_id, m.user_name)}
+                            disabled={busy}
+                            style={{
+                              padding: "5px 9px",
+                              borderRadius: 7,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              border: `1px solid ${T.border}`,
+                              background: "transparent",
+                              color: T.red,
+                              cursor: busy ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
+
       </main>
     </div>
   );

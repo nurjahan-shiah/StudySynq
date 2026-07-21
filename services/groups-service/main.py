@@ -13,7 +13,7 @@ Runs on port 8003
 """
 
 from uuid import uuid4, UUID
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, Body
 from sqlalchemy.orm import Session
 from typing import List
 from contextlib import asynccontextmanager
@@ -47,6 +47,47 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+
+# ============================================================================
+# Helper functions for US-B.4
+# ============================================================================
+
+def _get_group_or_404(db: Session, group_id: UUID):
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group or group.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    return group
+
+
+def _get_membership(db: Session, group_id: UUID, user_id):
+    return db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == user_id
+    ).first()
+
+
+def _require_group_manager(db: Session, group_id: UUID, current_user):
+    if current_user["role"] == "admin":
+        return
+
+    membership = _get_membership(db, group_id, current_user["user_id"])
+    if not (membership and membership.role == GroupMembershipRole.LEADER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only group leaders can manage members"
+        )
+
+
+def _leader_count(db: Session, group_id: UUID) -> int:
+    return db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.role == GroupMembershipRole.LEADER
+    ).count()
+
 
 # ============================================================================
 # Routes
@@ -330,6 +371,109 @@ async def leave_group(
     db.commit()
     
     return {"status": "left"}
+
+
+@app.delete("/groups/{group_id}/members/{user_id}")
+async def remove_group_member(
+    group_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    US-B.4 - Group Leader Management Console.
+    Group leaders/admins can remove members, but they cannot remove themselves.
+    """
+    _get_group_or_404(db, group_id)
+    _require_group_manager(db, group_id, current_user)
+
+    if str(user_id) == str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Leaders cannot remove themselves from the management console"
+        )
+
+    membership = _get_membership(db, group_id, user_id)
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found in this group"
+        )
+
+    if membership.role == GroupMembershipRole.LEADER and _leader_count(db, group_id) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove the only group leader"
+        )
+
+    db.delete(membership)
+    db.commit()
+
+    return {"status": "removed", "group_id": group_id, "user_id": user_id}
+
+
+@app.patch("/groups/{group_id}/members/{user_id}/role", response_model=GroupMemberResponse)
+async def update_group_member_role(
+    group_id: UUID,
+    user_id: UUID,
+    membership_role: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    US-B.4 - Promote or demote a member between member and leader.
+    """
+    _get_group_or_404(db, group_id)
+    _require_group_manager(db, group_id, current_user)
+
+    if str(user_id) == str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Leaders cannot change their own role"
+        )
+
+    membership = _get_membership(db, group_id, user_id)
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found in this group"
+        )
+
+    normalized_role = membership_role.strip().lower()
+    if normalized_role not in {"member", "leader"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="membership_role must be either 'member' or 'leader'"
+        )
+
+    if (
+        membership.role == GroupMembershipRole.LEADER
+        and normalized_role == "member"
+        and _leader_count(db, group_id) <= 1
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot demote the only group leader"
+        )
+
+    membership.role = GroupMembershipRole.LEADER if normalized_role == "leader" else GroupMembershipRole.MEMBER
+    db.commit()
+    db.refresh(membership)
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    return GroupMemberResponse(
+        user_id=user.id,
+        user_name=user.name,
+        user_email=user.email,
+        membership_role=membership.role.value
+    )
+
 
 @app.get("/groups/{group_id}/members", response_model=List[GroupMemberResponse])
 async def list_group_members(
