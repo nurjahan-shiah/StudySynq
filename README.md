@@ -158,6 +158,7 @@ This starts all containers:
 | Signup | http://localhost:3000/signup |
 | Dashboard | http://localhost:3000/dashboard |
 | Admin Console | http://localhost:3000/admin |
+| Health Dashboard| http://localhost:3000/admin/health|
 
 ---
 
