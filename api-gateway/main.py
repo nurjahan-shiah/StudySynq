@@ -23,6 +23,7 @@ import re
 import time
 import logging
 from contextlib import asynccontextmanager
+from wsgiref import headers
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, status
@@ -264,6 +265,15 @@ async def forward_request(
 
     headers = dict(request.headers)
     headers.pop("host", None)
+
+    # Never forward the browser's own Accept-Encoding upstream — the actual
+    # consumer of the upstream response is this httpx client, not the
+    # browser, and if httpx can't decode whatever encoding Cloudflare picks
+    # (e.g. br/zstd) in response, the raw compressed bytes get passed
+    # straight through to the browser as if they were plain JSON, producing
+    # garbled/undecodable response bodies. Let httpx negotiate its own
+    # Accept-Encoding, which only ever advertises encodings it can decode.
+    headers.pop("accept-encoding", None)
 
     # Remove client-supplied identity headers to prevent spoofing.
     headers.pop("x-user-id", None)
