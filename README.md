@@ -1,4 +1,4 @@
-# StudySync 📚
+# StudySynq 📚
 > A university-focused study group and collaboration platform - built for students, by students.
 
 StudySync helps university students connect with classmates, organize study sessions, share resources, and collaborate on courses. Think Google Classroom meets Discord study servers, but purpose-built for student-led course collaboration.
