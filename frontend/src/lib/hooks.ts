@@ -5,7 +5,7 @@ import { apiClient } from "./apiClient";
 
 // ── inline types (avoids the ./types import that TS can't resolve yet) ────────
 
-export type UserRole = "student" | "admin";
+export type UserRole = "student" | "group_leader" | "admin";
 
 export interface UserProfile {
   id: string;

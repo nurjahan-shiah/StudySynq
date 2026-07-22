@@ -22,6 +22,12 @@ from shared_notifications import create_group_notifications  # US-E.1
 def init_db():
     Base.metadata.create_all(bind=engine)
 
+def _has_occurred(scheduled_at: datetime) -> bool:
+    """True once a session's scheduled time is in the past (tz-safe)."""
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    return scheduled_at <= datetime.now(timezone.utc)
+
 async def lifespan(app: FastAPI):
     print("Sessions Service starting...")
     init_db()
@@ -129,6 +135,10 @@ async def rsvp_session(session_id: str, data: SessionRSVPCreate,
     session = db.query(StudySession).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session.is_cancelled:
+        raise HTTPException(status_code=400, detail="Cannot RSVP to a cancelled session")
+    if _has_occurred(session.scheduled_at):
+        raise HTTPException(status_code=400, detail="Cannot RSVP to a session that has already occurred")
     try:
         rsvp_status = SessionRSVPStatus(data.status)
     except ValueError:
@@ -162,10 +172,27 @@ async def update_session(session_id: str, data: StudySessionUpdate,
     # US-C.4 @author: Uzma Alam
     if session.is_cancelled:
         raise HTTPException(status_code=400, detail="Cannot edit a cancelled session")
+    if _has_occurred(session.scheduled_at):
+        raise HTTPException(status_code=400, detail="Cannot edit a session that has already occurred")
     for field, value in data.dict(exclude_unset=True).items():
         setattr(session, field, value)
     db.commit()
     db.refresh(session)
+
+    try:
+        create_group_notifications(
+            db,
+            group_id=str(session.group_id),
+            type="session",
+            title="Session updated",
+            message=f"{session.title} — {session.scheduled_at:%b %d, %H:%M}",
+            link=f"/sessions/{session.id}",
+            exclude_user_id=current_user["user_id"],
+            meta={"session_id": str(session.id), "group_id": str(session.group_id)},
+        )
+    except Exception as e:  # pragma: no cover - notifications are best-effort
+        print(f"[sessions-service] failed to create session-update notifications: {e}")
+
     return session
 
 # US-C.4 @author: Uzma Alam
@@ -180,9 +207,26 @@ async def cancel_session(session_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=403, detail="Not allowed to cancel this session")
     if session.is_cancelled:
         raise HTTPException(status_code=400, detail="Session is already cancelled")
+    if _has_occurred(session.scheduled_at):
+        raise HTTPException(status_code=400, detail="Cannot cancel a session that has already occurred")
     session.is_cancelled = True
     db.commit()
     db.refresh(session)
+
+    try:
+        create_group_notifications(
+            db,
+            group_id=str(session.group_id),
+            type="session",
+            title="Session cancelled",
+            message=f"{session.title} — {session.scheduled_at:%b %d, %H:%M} has been cancelled",
+            link=f"/sessions/{session.id}",
+            exclude_user_id=current_user["user_id"],
+            meta={"session_id": str(session.id), "group_id": str(session.group_id)},
+        )
+    except Exception as e:  # pragma: no cover - notifications are best-effort
+        print(f"[sessions-service] failed to create session-cancel notifications: {e}")
+
     return session
 
 # US-G.2 @author: Uzma Alam
