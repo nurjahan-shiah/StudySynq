@@ -106,6 +106,13 @@ def set_refresh_cookie(
 
     HttpOnly prevents frontend JavaScript from reading the token.
     COOKIE_SECURE should be true when the application uses HTTPS.
+
+    samesite="none" is required because the frontend (Vercel) and this API
+    (Render) live on different domains — every request is cross-site, and
+    browsers refuse to send SameSite=Lax/Strict cookies cross-site. Note
+    that SameSite=None cookies are only honored by browsers when Secure is
+    also set, so COOKIE_SECURE must be "true" wherever this runs over HTTPS
+    (i.e. in every deployed environment).
     """
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
@@ -113,7 +120,7 @@ def set_refresh_cookie(
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         path="/"
     )
 
@@ -124,7 +131,7 @@ def clear_refresh_cookie(response: Response):
         key=REFRESH_COOKIE_NAME,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         path="/"
     )
 
