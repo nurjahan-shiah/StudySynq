@@ -4,10 +4,7 @@ Recommendations Service - serve study-group recommendations.
 Reads precomputed scores from the recommendations table (written by the ETL/ML pipeline).
 Runs on port 8008
 """
-from datetime import datetime
-
-from fastapi import FastAPI, HTTPException, status, Depends, Query
-from sqlalchemy import func
+from fastapi import FastAPI, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
 import sys
@@ -18,7 +15,6 @@ from shared_models import (
 )
 from shared_database import engine, get_db, run_light_migrations
 from shared_auth import get_current_user
-from shared_time import iso_utc
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -36,103 +32,13 @@ app = FastAPI(title="StudySynq Recommendations Service", version="1.0.0", lifesp
 async def health():
     return {"status": "ok", "service": "recommendations-service"}
 
-def _enrich_groups(db: Session, groups, user_course_ids: set) -> dict:
-    """Batch-load the display data every recommendation card needs.
-
-    Three queries total regardless of how many groups are being shown, rather
-    than four per group. Returns {group_id: {...}}.
-
-    Overlap is computed from group_courses.course_id directly — *not* from a
-    join against courses. An inner join silently drops any group_courses row
-    whose course record is missing, which would score a group 0 that should
-    have scored a match. The courses table is only consulted to turn ids into
-    display codes, and a missing code just means no chip is rendered.
-    """
-    if not groups:
-        return {}
-
-    group_ids = [g.id for g in groups]
-
-    member_counts = dict(
-        db.query(GroupMembership.group_id, func.count(GroupMembership.id))
-          .filter(GroupMembership.group_id.in_(group_ids))
-          .group_by(GroupMembership.group_id)
-          .all()
-    )
-
-    # Source of truth for overlap: the link rows themselves.
-    links_by_group: dict = {}
-    all_course_ids = set()
-    for gid, cid in (db.query(GroupCourse.group_id, GroupCourse.course_id)
-                       .filter(GroupCourse.group_id.in_(group_ids))
-                       .all()):
-        links_by_group.setdefault(gid, []).append(cid)
-        all_course_ids.add(cid)
-
-    # Display labels only.
-    code_by_course_id = dict(
-        db.query(Course.id, Course.course_code)
-          .filter(Course.id.in_(all_course_ids))
-          .all()
-    ) if all_course_ids else {}
-
-    now = datetime.utcnow()
-    next_session_by_group: dict = {}
-    for sess in (db.query(StudySession)
-                   .filter(StudySession.group_id.in_(group_ids),
-                           StudySession.is_cancelled == False,   # noqa: E712
-                           StudySession.scheduled_at >= now)
-                   .order_by(StudySession.scheduled_at.asc())
-                   .all()):
-        # is_deleted is filtered in Python rather than SQL so this endpoint
-        # keeps working on databases where that column hasn't been migrated
-        # onto study_sessions yet.
-        if getattr(sess, "is_deleted", False):
-            continue
-        next_session_by_group.setdefault(sess.group_id, sess)
-
-    out = {}
-    for g in groups:
-        course_ids = links_by_group.get(g.id, [])
-        shared_ids = [cid for cid in course_ids if cid in user_course_ids]
-
-        all_codes = sorted(
-            code_by_course_id[cid] for cid in course_ids if cid in code_by_course_id
-        )
-        shared_codes = sorted(
-            code_by_course_id[cid] for cid in shared_ids if cid in code_by_course_id
-        )
-
-        nxt = next_session_by_group.get(g.id)
-        out[g.id] = {
-            "description": g.description,
-            "member_count": member_counts.get(g.id, 0),
-            "course_codes": all_codes,
-            "shared_courses": shared_codes,
-            # Counted from ids, so a group still scores correctly even when a
-            # course row is missing and no chip can be shown for it.
-            "shared_count": len(shared_ids),
-            "next_session": {
-                "id": str(nxt.id),
-                "title": nxt.title,
-                "scheduled_at": iso_utc(nxt.scheduled_at),
-                "location": nxt.location,
-            } if nxt else None,
-        }
-    return out
-
-
 @app.get("/recommendations")
-async def get_recommendations(limit: int = Query(10, ge=1, le=50),
-                              db: Session = Depends(get_db),
+async def get_recommendations(db: Session = Depends(get_db),
                               current_user: dict = Depends(get_current_user)):
     """
     Return ranked group recommendations for the current user.
     If the ML pipeline has written scores, use them. Otherwise fall back to a
     simple live course-overlap computation so the endpoint always returns data.
-
-    Each row carries the context the card renders: shared courses, member
-    count, and the group's next session.
     """
     user_id = current_user["user_id"]
     joined_group_ids = {
@@ -141,17 +47,6 @@ async def get_recommendations(limit: int = Query(10, ge=1, le=50),
             GroupMembership.user_id == user_id
         ).all()
     }
-    user_courses = {e.course_id for e in
-                    db.query(UserEnrollment).filter(UserEnrollment.user_id == user_id).all()}
-
-    def _eligible(group) -> bool:
-        return bool(
-            group
-            and group.id not in joined_group_ids
-            and str(group.created_by) != str(user_id)
-            and group.is_public
-            and not group.is_deleted
-        )
 
     # 1. Try precomputed recommendations first
     recs = (db.query(Recommendation)
@@ -159,72 +54,49 @@ async def get_recommendations(limit: int = Query(10, ge=1, le=50),
               .order_by(Recommendation.score.desc())
               .all())
     if recs:
-        rec_group_ids = [r.group_id for r in recs]
-        groups_by_id = {
-            g.id: g for g in
-            db.query(Group).filter(Group.id.in_(rec_group_ids)).all()
-        }
-        picked, scores = [], {}
+        results = []
         for r in recs:
-            group = groups_by_id.get(r.group_id)
-            if _eligible(group):
-                picked.append(group)
-                scores[group.id] = r.score
-                if len(picked) == limit:
+            group = db.query(Group).filter(Group.id == r.group_id).first()
+            if (
+                group
+                and group.id not in joined_group_ids
+                and str(group.created_by) != str(user_id)
+                and group.is_public
+                and not group.is_deleted
+            ):
+                results.append({
+                    "group_id": str(group.id),
+                    "name": group.name,
+                    "score": r.score,
+                })
+                if len(results) == 10:
                     break
+        return {"recommendations": results, "source": "ml_pipeline"}
 
-        extra = _enrich_groups(db, picked, user_courses)
-        results = [
-            {"group_id": str(g.id), "name": g.name, "score": scores[g.id], **extra[g.id]}
-            for g in picked
-        ]
-        return {
-            "recommendations": results,
-            "source": "ml_pipeline",
-            "enrolled_course_count": len(user_courses),
-            "candidate_group_count": len(picked),
-        }
-
-    # 2. Fallback: live course-overlap scoring.
-    # Each return carries diagnostics so the empty state can say which of the
-    # three reasons applies instead of always blaming missing enrolments.
+    # 2. Fallback: live course-overlap scoring
+    user_courses = {e.course_id for e in
+                    db.query(UserEnrollment).filter(UserEnrollment.user_id == user_id).all()}
     if not user_courses:
-        return {
-            "recommendations": [], "source": "fallback",
-            "enrolled_course_count": 0, "candidate_group_count": 0,
-        }
+        return {"recommendations": [], "source": "fallback"}
 
-    candidates = [
-        g for g in db.query(Group).filter(
-            Group.is_public == True,      # noqa: E712
-            Group.is_deleted == False,    # noqa: E712
-        ).all()
-        if _eligible(g)
-    ]
-    if not candidates:
-        return {
-            "recommendations": [], "source": "fallback",
-            "enrolled_course_count": len(user_courses), "candidate_group_count": 0,
-        }
-
-    extra = _enrich_groups(db, candidates, user_courses)
     scored = []
-    for group in candidates:
-        overlap = extra[group.id]["shared_count"]
+    for group in db.query(Group).filter(
+        Group.is_public == True,
+        Group.is_deleted == False
+    ).all():
+        if group.id in joined_group_ids or str(group.created_by) == str(user_id):
+            continue
+        group_courses = {gc.course_id for gc in
+                         db.query(GroupCourse).filter(GroupCourse.group_id == group.id).all()}
+        overlap = len(user_courses & group_courses)
         if overlap > 0:
             scored.append({
                 "group_id": str(group.id),
                 "name": group.name,
                 "score": min(overlap * 50, 100),
-                **extra[group.id],
             })
-    scored.sort(key=lambda x: (-x["score"], -x["member_count"], x["name"]))
-    return {
-        "recommendations": scored[:limit],
-        "source": "fallback",
-        "enrolled_course_count": len(user_courses),
-        "candidate_group_count": len(candidates),
-    }
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return {"recommendations": scored[:10], "source": "fallback"}
 
 
 # ── Recommended tab: groups matching the user's major (view only) ────────────
@@ -243,92 +115,53 @@ def _course_level(course_code: str) -> int | None:
 def _major_match_pct(user_major: str, group_major: str | None, year_match: bool) -> int:
     """
     Percentage match between the user's major and a group's intended major.
-
-    Every open group is shown, scored by how relevant it is:
-      - Exact major match      -> 95 base (105 -> capped 100 with the year bonus)
-      - Related major          -> word overlap between the two major names,
-        scaled into a 45-85 band, so "Computer Science" vs "Computer
-        Engineering" reads as a real partial match
-      - No intended major set  -> 35, an open-to-anyone baseline that
-        deliberately ranks *below* any genuine partial match
-      - Unrelated major        -> 15 floor
-
-    The year bonus (+10, capped at 100) applies when the group's courses sit
-    at the user's course level.
+    Groups aren't restricted to an exact major match — every open group is
+    shown, scored by how relevant it is:
+      - Exact major match           -> 100 (or 100 with the year bonus, capped)
+      - No intended major set       -> 40  (open to everyone, moderate baseline)
+      - Partial/related major       -> scaled by shared words between the two
+        major names (e.g. "Software Engineering" vs "Computer Engineering"
+        share "Engineering")
+    A +10 bonus is added when the group's courses sit at the user's year
+    level, capped at 100.
     """
     if not group_major:
-        base = 35
+        base = 40
     elif group_major.strip().lower() == user_major.strip().lower():
-        base = 95
+        base = 100
     else:
-        # Ignore filler words so "Computer Science" vs "Computer Engineering"
-        # isn't diluted, and compare on the meaningful terms only.
-        stop = {"and", "of", "the", "in", "with", "&"}
-        user_words = {w for w in user_major.lower().split() if w not in stop}
-        group_words = {w for w in group_major.lower().split() if w not in stop}
-        union = user_words | group_words
-        if not union:
-            base = 35
-        else:
-            ratio = len(user_words & group_words) / len(union)
-            # No shared terms at all -> unrelated floor, not a 0 that would
-            # rank below groups with no major set.
-            base = 15 if ratio == 0 else round(45 + ratio * 40)
+        user_words = set(user_major.lower().split())
+        group_words = set(group_major.lower().split())
+        overlap = len(user_words & group_words)
+        union = len(user_words | group_words) or 1
+        base = round((overlap / union) * 80)  # partial credit only, never hits 100
 
     if year_match:
-        base += 10
+        base = min(100, base + 10)
 
-    return max(5, min(100, base))
+    return max(base, 5)
 
 
 @app.get("/recommendations/major")
-async def get_major_recommendations(
-    limit: int = Query(30, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    include_joined: bool = Query(True, description="Include groups the user is already in"),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Group suggestions ranked by how well each fits the user's major/year.
+async def get_major_recommendations(db: Session = Depends(get_db),
+                                    current_user: dict = Depends(get_current_user)):
+    """Group suggestions based on the user's major, weighted by which year
+    the user is in (groups whose courses sit at the user's level rank
+    first). Requires a completed profile — otherwise the frontend shows
+    "complete setting up your profile to see recommendations". Each group
+    includes its next couple of upcoming sessions so the student can see
+    real activity before deciding whether to join."""
+    from datetime import datetime
 
-    Each group carries its next couple of upcoming sessions so a student can
-    see real activity before deciding whether to join.
-
-    Paginated, and batched rather than per-group: the previous version ran
-    four queries inside a loop over every public group, which on a few
-    hundred groups meant a four-figure query count per page load.
-    """
     user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # An admin account that has a major/year set (common for staff who also
-    # study, and for demo/test accounts) gets real recommendations like any
-    # other user. "Not applicable" is only for an admin with no student
-    # profile, where the "complete your profile" prompt would be noise.
-    is_admin = str(current_user.get("role", "")).lower().endswith("admin")
-    if is_admin and not (user.major and user.year_of_study):
-        return {
-            "profile_complete": False,
-            "not_applicable": True,
-            "reason": "Group recommendations are personalised to a student's major and year.",
-            "major": user.major,
-            "year_of_study": user.year_of_study,
-            "total": 0,
-            "limit": limit,
-            "offset": offset,
-            "recommendations": [],
-        }
-
     if not (user.major and user.year_of_study):
         return {
             "profile_complete": False,
-            "not_applicable": False,
             "major": user.major,
             "year_of_study": user.year_of_study,
-            "total": 0,
-            "limit": limit,
-            "offset": offset,
             "recommendations": [],
         }
 
@@ -339,102 +172,65 @@ async def get_major_recommendations(
     user_level = _YEAR_TO_LEVEL.get(user.year_of_study)
     now = datetime.utcnow()
 
+    results = []
+    # Every open group is shown here — not just groups whose intended_major
+    # exactly matches the user's. Relevance is instead expressed as a match
+    # percentage (see _major_match_pct) so the student can see the whole
+    # landscape of groups, ranked by how well each fits their major.
     groups = (db.query(Group)
                 .filter(Group.is_public == True,          # noqa: E712
                         Group.is_deleted == False)         # noqa: E712
                 .all())
-    if not include_joined:
-        groups = [g for g in groups if g.id not in joined_group_ids]
-
-    if not groups:
-        return {
-            "profile_complete": True,
-            "not_applicable": False,
-            "major": user.major,
-            "year_of_study": user.year_of_study,
-            "total": 0,
-            "limit": limit,
-            "offset": offset,
-            "recommendations": [],
-        }
-
-    group_ids = [g.id for g in groups]
-
-    # ── Batched lookups: three queries total, regardless of group count ──
-
-    member_counts = dict(
-        db.query(GroupMembership.group_id, func.count(GroupMembership.id))
-          .filter(GroupMembership.group_id.in_(group_ids))
-          .group_by(GroupMembership.group_id)
-          .all()
-    )
-
-    courses_by_group: dict = {}
-    for gid, code in (db.query(GroupCourse.group_id, Course.course_code)
-                        .join(Course, GroupCourse.course_id == Course.id)
-                        .filter(GroupCourse.group_id.in_(group_ids))
-                        .all()):
-        courses_by_group.setdefault(gid, []).append(code)
-
-    sessions_by_group: dict = {}
-    for sess in (db.query(StudySession)
-                   .filter(StudySession.group_id.in_(group_ids),
-                           StudySession.is_cancelled == False,   # noqa: E712
-                           StudySession.is_deleted == False,     # noqa: E712
-                           StudySession.scheduled_at >= now)
-                   .order_by(StudySession.scheduled_at.asc())
-                   .all()):
-        # Two per group is all the card shows; skip the rest.
-        bucket = sessions_by_group.setdefault(sess.group_id, [])
-        if len(bucket) < 2:
-            bucket.append(sess)
-
-    results = []
     for group in groups:
-        course_codes = sorted(courses_by_group.get(group.id, []))
-        levels = {lvl for code in course_codes if (lvl := _course_level(code)) is not None}
+        already_joined = group.id in joined_group_ids
+
+        member_count = (db.query(GroupMembership)
+                          .filter(GroupMembership.group_id == group.id)
+                          .count())
+        course_rows = (db.query(Course)
+                         .join(GroupCourse, GroupCourse.course_id == Course.id)
+                         .filter(GroupCourse.group_id == group.id)
+                         .all())
+        course_codes = sorted(c.course_code for c in course_rows)
+        levels = {lvl for c in course_rows if (lvl := _course_level(c.course_code)) is not None}
         year_match = bool(user_level and user_level in levels)
+        match_pct = _major_match_pct(user.major, group.intended_major, year_match)
+
+        upcoming_sessions = (db.query(StudySession)
+                               .filter(StudySession.group_id == group.id,
+                                       StudySession.is_cancelled == False,   # noqa: E712
+                                       StudySession.scheduled_at >= now)
+                               .order_by(StudySession.scheduled_at.asc())
+                               .limit(2)
+                               .all())
 
         results.append({
             "group_id": str(group.id),
             "name": group.name,
             "description": group.description,
-            "member_count": member_counts.get(group.id, 0),
+            "member_count": member_count,
             "course_codes": course_codes,
             "year_match": year_match,
-            "match_pct": _major_match_pct(user.major, group.intended_major, year_match),
-            "already_joined": group.id in joined_group_ids,
+            "match_pct": match_pct,
+            "already_joined": already_joined,
             "upcoming_sessions": [
                 {
                     "id": str(s.id),
                     "title": s.title,
-                    "scheduled_at": iso_utc(s.scheduled_at),
+                    "scheduled_at": s.scheduled_at.isoformat(),
                     "location": s.location,
                 }
-                for s in sessions_by_group.get(group.id, [])
+                for s in upcoming_sessions
             ],
         })
 
-    # Highest major match first, then groups at the user's course level,
-    # then by size. Groups the user already belongs to sink to the bottom.
-    results.sort(key=lambda r: (
-        r["already_joined"],
-        -r["match_pct"],
-        not r["year_match"],
-        -r["member_count"],
-        r["name"],
-    ))
-
-    total = len(results)
+    # Highest major match first, then groups at the user's course level, then by size.
+    results.sort(key=lambda r: (-r["match_pct"], not r["year_match"], -r["member_count"], r["name"]))
     return {
         "profile_complete": True,
-        "not_applicable": False,
         "major": user.major,
         "year_of_study": user.year_of_study,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "recommendations": results[offset:offset + limit],
+        "recommendations": results,
     }
 
 

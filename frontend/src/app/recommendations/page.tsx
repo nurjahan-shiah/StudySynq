@@ -6,14 +6,12 @@
  *
  * Backend:
  *   GET /recommendations — recommendations-service (port 8008)
- *   Returns { recommendations: [{ group_id, name, score, description,
- *             member_count, course_codes, shared_courses, next_session }],
- *             source: "ml_pipeline" | "fallback" }
+ *   Returns { recommendations: [{ group_id, name, score }], source: "ml_pipeline" | "fallback" }
  *   "ml_pipeline"  -> scikit-learn course-overlap similarity model (DuckDB-computed, written to Postgres)
  *   "fallback"     -> live overlap count, used until the ML pipeline has run for this user
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
@@ -34,33 +32,16 @@ const T = {
   yellow: "var(--ss-yellow)",
 } as const;
 
-interface NextSession {
-  id: string;
-  title: string;
-  scheduled_at: string;
-  location: string | null;
-}
-
 interface RecommendationRow {
   group_id: string;
   name: string;
   score: number;
-  description?: string | null;
-  member_count?: number;
-  course_codes?: string[];
-  shared_courses?: string[];
-  next_session?: NextSession | null;
 }
 
 interface RecommendationsResponse {
   recommendations: RecommendationRow[];
   source: "ml_pipeline" | "fallback";
-  /** Diagnostics so the empty state can name the actual reason. */
-  enrolled_course_count?: number;
-  candidate_group_count?: number;
 }
-
-type SortKey = "match" | "members" | "activity";
 
 // Score comes back either as a 0–1 similarity (ML pipeline) or a 0–100
 // overlap-count score (fallback) — normalize both to a 0–100 percentage.
@@ -79,26 +60,6 @@ function matchLabel(pct: number): string {
   if (pct >= 75) return "Strong match";
   if (pct >= 45) return "Good match";
   return "Possible match";
-}
-
-/** Timestamps arrive UTC-marked ("+00:00"); older rows may be naive. Only
- *  append "Z" when there's no designator — doing it unconditionally would
- *  produce "+00:00Z", which parses to NaN. */
-function parseServerDate(iso: string): Date {
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim());
-  return new Date(hasZone ? iso : `${iso}Z`);
-}
-
-function formatSessionTime(iso: string): string {
-  const d = parseServerDate(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  const date = sameDay
-    ? "Today"
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time}`;
 }
 
 // ── Circular percentage ring ─────────────────────────────────────────────
@@ -132,25 +93,6 @@ function MatchRing({ pct }: { pct: number }) {
   );
 }
 
-// ── Small course chip ────────────────────────────────────────────────────
-
-function CourseChip({ code, shared }: { code: string; shared?: boolean }) {
-  return (
-    <span
-      title={shared ? "You're enrolled in this course" : undefined}
-      style={{
-        fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-        background: shared ? `${T.blue}1a` : T.bg3,
-        color: shared ? T.blue : T.text2,
-        border: `1px solid ${shared ? `${T.blue}33` : "transparent"}`,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {code}
-    </span>
-  );
-}
-
 // ── Recommendation card ──────────────────────────────────────────────────
 
 function RecommendationCard({
@@ -158,32 +100,21 @@ function RecommendationCard({
 }: { rec: RecommendationRow; onJoined: (groupId: string) => void }) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
-  const [joinError, setJoinError] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explanationError, setExplanationError] = useState<string | null>(null);
-  const [hover, setHover] = useState(false);
   const router = useRouter();
   const pct = toPercent(rec.score);
   const color = matchColor(pct);
 
-  const shared = rec.shared_courses ?? [];
-  const others = (rec.course_codes ?? []).filter(c => !shared.includes(c));
-  const visibleOthers = others.slice(0, 3);
-  const hiddenCount = others.length - visibleOthers.length;
-
   async function handleJoin() {
     setJoining(true);
-    setJoinError(null);
     const res = await joinGroup(rec.group_id);
     setJoining(false);
-    // Previously a failed join did nothing at all — the button just looked dead.
-    if (res.error) {
-      setJoinError(res.error);
-      return;
+    if (!res.error) {
+      setJoined(true);
+      onJoined(rec.group_id);
     }
-    setJoined(true);
-    onJoined(rec.group_id);
   }
 
   async function handleExplain() {
@@ -206,83 +137,26 @@ function RecommendationCard({
   }
 
   return (
-    <div
-      className="ss-card"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: "flex", gap: 16, alignItems: "flex-start",
-        borderLeft: `3px solid ${color}`,
-        transform: hover ? "translateY(-1px)" : "none",
-        boxShadow: hover ? "0 6px 20px rgba(0,0,0,.10)" : "none",
-        transition: "transform .15s ease, box-shadow .15s ease",
-      }}
-    >
+    <div className="ss-card" style={{ display: "flex", gap: 16, alignItems: "center" }}>
       <MatchRing pct={pct} />
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: T.text, margin: 0 }}>{rec.name}</h3>
-          <span style={{
-            fontSize: 11, fontWeight: 700, color, background: `${color}1a`,
-            padding: "2px 9px", borderRadius: 20,
-          }}>
-            {matchLabel(pct)}
-          </span>
         </div>
-
-        {/* Meta line: members + shared-course count, the two facts that
-            actually help someone decide whether to join. */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          fontSize: 11.5, color: T.text2, marginBottom: 8,
+        <span style={{
+          fontSize: 11, fontWeight: 700, color, background: `${color}1a`,
+          padding: "2px 9px", borderRadius: 20, display: "inline-block",
         }}>
-          <span>◍ {rec.member_count ?? 0} member{rec.member_count === 1 ? "" : "s"}</span>
-          {shared.length > 0 && (
-            <span style={{ color: T.blue, fontWeight: 600 }}>
-              ◆ {shared.length} shared course{shared.length === 1 ? "" : "s"}
-            </span>
-          )}
-        </div>
-
-        {(shared.length > 0 || visibleOthers.length > 0) && (
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
-            {shared.map(c => <CourseChip key={c} code={c} shared />)}
-            {visibleOthers.map(c => <CourseChip key={c} code={c} />)}
-            {hiddenCount > 0 && (
-              <span style={{ fontSize: 10.5, color: T.text2, alignSelf: "center" }}>
-                +{hiddenCount} more
-              </span>
-            )}
-          </div>
-        )}
-
-        {rec.description && (
-          <p style={{ fontSize: 12, color: T.text2, margin: "0 0 8px", lineHeight: 1.5 }}>
-            {rec.description.length > 120 ? `${rec.description.slice(0, 120)}…` : rec.description}
-          </p>
-        )}
-
-        {rec.next_session && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 7, marginBottom: 8, flexWrap: "wrap",
-            fontSize: 11.5, color: T.text2,
-            background: T.bg3, borderRadius: 8, padding: "6px 10px",
-          }}>
-            <span style={{ color: T.green }}>▦</span>
-            <span style={{ fontWeight: 600, color: T.text }}>{rec.next_session.title}</span>
-            <span>· {formatSessionTime(rec.next_session.scheduled_at)}</span>
-            {rec.next_session.location && <span>· {rec.next_session.location}</span>}
-          </div>
-        )}
-
+          {matchLabel(pct)}
+        </span>
         <button
           type="button"
           onClick={handleExplain}
           disabled={explaining}
           aria-expanded={Boolean(explanation)}
           style={{
-            display: "block", margin: 0, padding: 0, border: "none",
+            display: "block", margin: "8px 0 0", padding: 0, border: "none",
             background: "transparent", color: T.blue, fontSize: 12,
             fontWeight: 700, cursor: explaining ? "wait" : "pointer",
           }}
@@ -326,58 +200,15 @@ function RecommendationCard({
         >
           View group
         </button>
-        {joinError && (
-          <p role="alert" style={{
-            fontSize: 10.5, color: T.red, margin: 0, maxWidth: 120, lineHeight: 1.35,
-          }}>
-            {joinError}
-          </p>
-        )}
       </div>
-    </div>
-  );
-}
-
-// ── Skeleton (shown while loading, keeps the layout from jumping) ─────────
-
-function SkeletonCard() {
-  return (
-    <div className="ss-card" style={{ display: "flex", gap: 16, alignItems: "center", opacity: 0.55 }}>
-      <div style={{
-        width: 64, height: 64, borderRadius: "50%",
-        border: `6px solid ${T.bg3}`, flexShrink: 0,
-      }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ height: 13, width: "45%", background: T.bg3, borderRadius: 5, marginBottom: 9 }} />
-        <div style={{ height: 10, width: "28%", background: T.bg3, borderRadius: 5, marginBottom: 9 }} />
-        <div style={{ height: 10, width: "62%", background: T.bg3, borderRadius: 5 }} />
-      </div>
-      <div style={{ width: 96, height: 30, background: T.bg3, borderRadius: 8, flexShrink: 0 }} />
     </div>
   );
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────
 
-function Empty({
-  enrolledCourses, candidateGroups,
-}: { enrolledCourses?: number; candidateGroups?: number }) {
+function Empty({ noCourses }: { noCourses: boolean }) {
   const router = useRouter();
-
-  // Three genuinely different situations. Showing "enroll in courses" for all
-  // of them sends you to fix something that isn't broken.
-  const noCourses = enrolledCourses === 0;
-  const noGroups = !noCourses && candidateGroups === 0;
-
-  const message = noCourses
-    ? "Enroll in a few courses and we'll match you with study groups sharing them."
-    : noGroups
-      ? "There are no other open groups to join yet — every public group is one you already belong to or created."
-      : "No overlap yet. None of the open groups cover the courses you're enrolled in.";
-
-  const ctaLabel = noCourses ? "Browse courses" : noGroups ? "Create a group" : "Browse all groups";
-  const ctaHref  = noCourses ? "/courses" : "/groups";
-
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -390,21 +221,17 @@ function Empty({
       }}>
         ✦
       </div>
-      <p style={{ fontSize: 14, margin: 0, maxWidth: 360, lineHeight: 1.55 }}>
-        {message}
+      <p style={{ fontSize: 14, margin: 0, maxWidth: 340 }}>
+        {noCourses
+          ? "Enroll in a few courses and we'll match you with study groups sharing them."
+          : "No recommendations yet — check back once more groups have formed around your courses."}
       </p>
-      {enrolledCourses !== undefined && (
-        <p style={{ fontSize: 11.5, margin: 0, color: T.text2, opacity: 0.75 }}>
-          {enrolledCourses} course{enrolledCourses === 1 ? "" : "s"} enrolled ·{" "}
-          {candidateGroups ?? 0} open group{candidateGroups === 1 ? "" : "s"} available
-        </p>
-      )}
       <button
-        onClick={() => router.push(ctaHref)}
+        onClick={() => router.push(noCourses ? "/courses" : "/groups")}
         className="ss-btn-ghost"
         style={{ fontSize: 12.5, padding: "8px 18px" }}
       >
-        {ctaLabel}
+        {noCourses ? "Browse courses" : "Browse groups"}
       </button>
     </div>
   );
@@ -420,8 +247,6 @@ export default function RecommendationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [sort, setSort] = useState<SortKey>("match");
-  const [diag, setDiag] = useState<{ courses?: number; groups?: number }>({});
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -439,36 +264,13 @@ export default function RecommendationsPage() {
     } else {
       setRecs(res.data?.recommendations ?? []);
       setSource(res.data?.source ?? null);
-      setDiag({
-        courses: res.data?.enrolled_course_count,
-        groups: res.data?.candidate_group_count,
-      });
     }
     setLoading(false);
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const visibleRecs = useMemo(() => {
-    const list = recs.filter(r => !dismissed.has(r.group_id));
-    const by = {
-      match:   (a: RecommendationRow, b: RecommendationRow) => toPercent(b.score) - toPercent(a.score),
-      members: (a: RecommendationRow, b: RecommendationRow) => (b.member_count ?? 0) - (a.member_count ?? 0),
-      // Groups with a scheduled session first, soonest at the top.
-      activity: (a: RecommendationRow, b: RecommendationRow) => {
-        const at = a.next_session ? parseServerDate(a.next_session.scheduled_at).getTime() : Infinity;
-        const bt = b.next_session ? parseServerDate(b.next_session.scheduled_at).getTime() : Infinity;
-        return at - bt;
-      },
-    }[sort];
-    return [...list].sort(by);
-  }, [recs, dismissed, sort]);
-
-  const sortOptions: { id: SortKey; label: string }[] = [
-    { id: "match",    label: "Best match" },
-    { id: "members",  label: "Most members" },
-    { id: "activity", label: "Next session" },
-  ];
+  const visibleRecs = recs.filter(r => !dismissed.has(r.group_id));
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
@@ -489,57 +291,26 @@ export default function RecommendationsPage() {
           </div>
         </div>
 
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          margin: "18px 0 4px", flexWrap: "wrap", maxWidth: 720,
-        }}>
-          {source && !loading && (
-            <span
-              title={source === "ml_pipeline"
-                ? "Scores from the trained similarity model"
-                : "Live course-overlap estimate — the model hasn't run for you yet"}
-              style={{
-                fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
-                background: source === "ml_pipeline" ? `${T.green}1a` : T.bg3,
-                color: source === "ml_pipeline" ? T.green : T.text2,
-                textTransform: "uppercase", letterSpacing: "0.04em", cursor: "help",
-              }}
-            >
+        {source && !loading && (
+          <div style={{ margin: "18px 0 4px" }}>
+            <span style={{
+              fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+              background: source === "ml_pipeline" ? `${T.green}1a` : T.bg3,
+              color: source === "ml_pipeline" ? T.green : T.text2,
+              textTransform: "uppercase", letterSpacing: "0.04em",
+            }}>
               {source === "ml_pipeline" ? "● Live model results" : "● Estimated match"}
             </span>
-          )}
-
-          {!loading && visibleRecs.length > 1 && (
-            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-              {sortOptions.map(o => (
-                <button
-                  key={o.id}
-                  onClick={() => setSort(o.id)}
-                  style={{
-                    padding: "4px 11px", borderRadius: 20, border: "none", cursor: "pointer",
-                    fontSize: 11.5, fontWeight: sort === o.id ? 700 : 500,
-                    background: sort === o.id ? `${T.red}14` : "transparent",
-                    color: sort === o.id ? T.red : T.text2,
-                  }}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div style={{ marginTop: 18 }}>
           {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
+            <p style={{ color: T.text2, fontSize: 13 }}>Loading…</p>
           ) : error ? (
             <p style={{ color: T.red, fontSize: 13 }}>Couldn&apos;t load recommendations: {error}</p>
           ) : visibleRecs.length === 0 ? (
-            <Empty enrolledCourses={diag.courses} candidateGroups={diag.groups} />
+            <Empty noCourses={source === "fallback" && recs.length === 0} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
               {visibleRecs.map(rec => (
