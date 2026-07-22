@@ -117,7 +117,8 @@ def _ensure_soft_delete_columns():
     from sqlalchemy import text
 
     with engine.connect() as conn:
-        for table in ("groups", "resources", "announcements", "study_sessions"):
+        for table in ("groups", "resources", "announcements", "study_sessions",
+                      "posts", "post_comments"):
             conn.execute(text(
                 f"ALTER TABLE {table} "
                 "ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE, "

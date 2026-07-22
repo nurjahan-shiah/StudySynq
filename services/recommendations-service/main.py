@@ -178,10 +178,12 @@ async def get_major_recommendations(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Admins don't have a major/year and shouldn't be nagged to set one —
-    # this is a student-facing feature, so say so plainly instead of showing
-    # the "complete your profile" prompt.
-    if str(current_user.get("role", "")).lower().endswith("admin"):
+    # An admin account that has a major/year set (common for staff who also
+    # study, and for demo/test accounts) gets real recommendations like any
+    # other user. "Not applicable" is only for an admin with no student
+    # profile, where the "complete your profile" prompt would be noise.
+    is_admin = str(current_user.get("role", "")).lower().endswith("admin")
+    if is_admin and not (user.major and user.year_of_study):
         return {
             "profile_complete": False,
             "not_applicable": True,

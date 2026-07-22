@@ -379,6 +379,7 @@ export function SocialFeed({ myGroups }: { myGroups: MyGroup[] }) {
   const [draft, setDraft] = useState("");
   const [groupId, setGroupId] = useState("");
   const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await getFeed(30);
@@ -397,13 +398,18 @@ export function SocialFeed({ myGroups }: { myGroups: MyGroup[] }) {
     const content = draft.trim();
     if (!content || posting) return;
     setPosting(true);
+    setPostError(null);
     const res = await createPost(content, groupId || undefined);
     setPosting(false);
-    if (!res.error && res.data) {
-      setPosts(p => [res.data!, ...p]);
-      setDraft("");
-      setGroupId("");
+    if (res.error || !res.data) {
+      // Previously this branch did nothing at all, so a failed post looked
+      // like a dead button with no explanation.
+      setPostError(res.error ?? "Couldn't publish your post. Please try again.");
+      return;
     }
+    setPosts(p => [res.data!, ...p]);
+    setDraft("");
+    setGroupId("");
   }
 
   return (
@@ -440,6 +446,11 @@ export function SocialFeed({ myGroups }: { myGroups: MyGroup[] }) {
             {posting ? "Posting…" : "Post"}
           </button>
         </div>
+        {postError && (
+          <p role="alert" style={{ fontSize: 12, color: T.red, margin: "8px 0 0", lineHeight: 1.45 }}>
+            {postError}
+          </p>
+        )}
       </div>
 
       {/* Feed */}
