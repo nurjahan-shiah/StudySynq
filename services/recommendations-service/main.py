@@ -41,6 +41,12 @@ def _enrich_groups(db: Session, groups, user_course_ids: set) -> dict:
 
     Three queries total regardless of how many groups are being shown, rather
     than four per group. Returns {group_id: {...}}.
+
+    Overlap is computed from group_courses.course_id directly — *not* from a
+    join against courses. An inner join silently drops any group_courses row
+    whose course record is missing, which would score a group 0 that should
+    have scored a match. The courses table is only consulted to turn ids into
+    display codes, and a missing code just means no chip is rendered.
     """
     if not groups:
         return {}
@@ -54,38 +60,58 @@ def _enrich_groups(db: Session, groups, user_course_ids: set) -> dict:
           .all()
     )
 
-    courses_by_group: dict = {}
-    for gid, cid, code in (db.query(GroupCourse.group_id, Course.id, Course.course_code)
-                             .join(Course, GroupCourse.course_id == Course.id)
-                             .filter(GroupCourse.group_id.in_(group_ids))
-                             .all()):
-        courses_by_group.setdefault(gid, []).append((cid, code))
+    # Source of truth for overlap: the link rows themselves.
+    links_by_group: dict = {}
+    all_course_ids = set()
+    for gid, cid in (db.query(GroupCourse.group_id, GroupCourse.course_id)
+                       .filter(GroupCourse.group_id.in_(group_ids))
+                       .all()):
+        links_by_group.setdefault(gid, []).append(cid)
+        all_course_ids.add(cid)
+
+    # Display labels only.
+    code_by_course_id = dict(
+        db.query(Course.id, Course.course_code)
+          .filter(Course.id.in_(all_course_ids))
+          .all()
+    ) if all_course_ids else {}
 
     now = datetime.utcnow()
     next_session_by_group: dict = {}
     for sess in (db.query(StudySession)
                    .filter(StudySession.group_id.in_(group_ids),
                            StudySession.is_cancelled == False,   # noqa: E712
-                           StudySession.is_deleted == False,     # noqa: E712
                            StudySession.scheduled_at >= now)
                    .order_by(StudySession.scheduled_at.asc())
                    .all()):
+        # is_deleted is filtered in Python rather than SQL so this endpoint
+        # keeps working on databases where that column hasn't been migrated
+        # onto study_sessions yet.
+        if getattr(sess, "is_deleted", False):
+            continue
         next_session_by_group.setdefault(sess.group_id, sess)
 
     out = {}
     for g in groups:
-        pairs = courses_by_group.get(g.id, [])
-        all_codes = sorted(code for _, code in pairs)
-        # Courses the student is actually enrolled in — the concrete reason
-        # this group was surfaced, so the card can show it instead of only a
-        # percentage.
-        shared_codes = sorted(code for cid, code in pairs if cid in user_course_ids)
+        course_ids = links_by_group.get(g.id, [])
+        shared_ids = [cid for cid in course_ids if cid in user_course_ids]
+
+        all_codes = sorted(
+            code_by_course_id[cid] for cid in course_ids if cid in code_by_course_id
+        )
+        shared_codes = sorted(
+            code_by_course_id[cid] for cid in shared_ids if cid in code_by_course_id
+        )
+
         nxt = next_session_by_group.get(g.id)
         out[g.id] = {
             "description": g.description,
             "member_count": member_counts.get(g.id, 0),
             "course_codes": all_codes,
             "shared_courses": shared_codes,
+            # Counted from ids, so a group still scores correctly even when a
+            # course row is missing and no chip can be shown for it.
+            "shared_count": len(shared_ids),
             "next_session": {
                 "id": str(nxt.id),
                 "title": nxt.title,
@@ -152,11 +178,21 @@ async def get_recommendations(limit: int = Query(10, ge=1, le=50),
             {"group_id": str(g.id), "name": g.name, "score": scores[g.id], **extra[g.id]}
             for g in picked
         ]
-        return {"recommendations": results, "source": "ml_pipeline"}
+        return {
+            "recommendations": results,
+            "source": "ml_pipeline",
+            "enrolled_course_count": len(user_courses),
+            "candidate_group_count": len(picked),
+        }
 
-    # 2. Fallback: live course-overlap scoring
+    # 2. Fallback: live course-overlap scoring.
+    # Each return carries diagnostics so the empty state can say which of the
+    # three reasons applies instead of always blaming missing enrolments.
     if not user_courses:
-        return {"recommendations": [], "source": "fallback"}
+        return {
+            "recommendations": [], "source": "fallback",
+            "enrolled_course_count": 0, "candidate_group_count": 0,
+        }
 
     candidates = [
         g for g in db.query(Group).filter(
@@ -166,12 +202,15 @@ async def get_recommendations(limit: int = Query(10, ge=1, le=50),
         if _eligible(g)
     ]
     if not candidates:
-        return {"recommendations": [], "source": "fallback"}
+        return {
+            "recommendations": [], "source": "fallback",
+            "enrolled_course_count": len(user_courses), "candidate_group_count": 0,
+        }
 
     extra = _enrich_groups(db, candidates, user_courses)
     scored = []
     for group in candidates:
-        overlap = len(extra[group.id]["shared_courses"])
+        overlap = extra[group.id]["shared_count"]
         if overlap > 0:
             scored.append({
                 "group_id": str(group.id),
@@ -180,7 +219,12 @@ async def get_recommendations(limit: int = Query(10, ge=1, le=50),
                 **extra[group.id],
             })
     scored.sort(key=lambda x: (-x["score"], -x["member_count"], x["name"]))
-    return {"recommendations": scored[:limit], "source": "fallback"}
+    return {
+        "recommendations": scored[:limit],
+        "source": "fallback",
+        "enrolled_course_count": len(user_courses),
+        "candidate_group_count": len(candidates),
+    }
 
 
 # ── Recommended tab: groups matching the user's major (view only) ────────────

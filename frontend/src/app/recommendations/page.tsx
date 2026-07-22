@@ -55,6 +55,9 @@ interface RecommendationRow {
 interface RecommendationsResponse {
   recommendations: RecommendationRow[];
   source: "ml_pipeline" | "fallback";
+  /** Diagnostics so the empty state can name the actual reason. */
+  enrolled_course_count?: number;
+  candidate_group_count?: number;
 }
 
 type SortKey = "match" | "members" | "activity";
@@ -356,8 +359,25 @@ function SkeletonCard() {
 
 // ── Empty state ───────────────────────────────────────────────────────────
 
-function Empty({ noCourses }: { noCourses: boolean }) {
+function Empty({
+  enrolledCourses, candidateGroups,
+}: { enrolledCourses?: number; candidateGroups?: number }) {
   const router = useRouter();
+
+  // Three genuinely different situations. Showing "enroll in courses" for all
+  // of them sends you to fix something that isn't broken.
+  const noCourses = enrolledCourses === 0;
+  const noGroups = !noCourses && candidateGroups === 0;
+
+  const message = noCourses
+    ? "Enroll in a few courses and we'll match you with study groups sharing them."
+    : noGroups
+      ? "There are no other open groups to join yet — every public group is one you already belong to or created."
+      : "No overlap yet. None of the open groups cover the courses you're enrolled in.";
+
+  const ctaLabel = noCourses ? "Browse courses" : noGroups ? "Create a group" : "Browse all groups";
+  const ctaHref  = noCourses ? "/courses" : "/groups";
+
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -370,17 +390,21 @@ function Empty({ noCourses }: { noCourses: boolean }) {
       }}>
         ✦
       </div>
-      <p style={{ fontSize: 14, margin: 0, maxWidth: 340 }}>
-        {noCourses
-          ? "Enroll in a few courses and we'll match you with study groups sharing them."
-          : "No recommendations yet — check back once more groups have formed around your courses."}
+      <p style={{ fontSize: 14, margin: 0, maxWidth: 360, lineHeight: 1.55 }}>
+        {message}
       </p>
+      {enrolledCourses !== undefined && (
+        <p style={{ fontSize: 11.5, margin: 0, color: T.text2, opacity: 0.75 }}>
+          {enrolledCourses} course{enrolledCourses === 1 ? "" : "s"} enrolled ·{" "}
+          {candidateGroups ?? 0} open group{candidateGroups === 1 ? "" : "s"} available
+        </p>
+      )}
       <button
-        onClick={() => router.push(noCourses ? "/courses" : "/groups")}
+        onClick={() => router.push(ctaHref)}
         className="ss-btn-ghost"
         style={{ fontSize: 12.5, padding: "8px 18px" }}
       >
-        {noCourses ? "Browse courses" : "Browse groups"}
+        {ctaLabel}
       </button>
     </div>
   );
@@ -397,6 +421,7 @@ export default function RecommendationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortKey>("match");
+  const [diag, setDiag] = useState<{ courses?: number; groups?: number }>({});
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -414,6 +439,10 @@ export default function RecommendationsPage() {
     } else {
       setRecs(res.data?.recommendations ?? []);
       setSource(res.data?.source ?? null);
+      setDiag({
+        courses: res.data?.enrolled_course_count,
+        groups: res.data?.candidate_group_count,
+      });
     }
     setLoading(false);
   }, [userId]);
@@ -510,7 +539,7 @@ export default function RecommendationsPage() {
           ) : error ? (
             <p style={{ color: T.red, fontSize: 13 }}>Couldn&apos;t load recommendations: {error}</p>
           ) : visibleRecs.length === 0 ? (
-            <Empty noCourses={source === "fallback" && recs.length === 0} />
+            <Empty enrolledCourses={diag.courses} candidateGroups={diag.groups} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
               {visibleRecs.map(rec => (
