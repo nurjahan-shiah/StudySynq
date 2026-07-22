@@ -78,7 +78,14 @@ export const approveCourseRequest = (id: string, admin_note?: string) =>
 export const rejectCourseRequest = (id: string, admin_note?: string) =>
   apiClient.post<CourseRequest>(`/courses/requests/${id}/reject`, { admin_note });
 
-// ── Major-based recommendations (view only) ──────────────────────────────────
+// ── Major-based recommendations ──────────────────────────────────────────────
+
+export interface MajorRecommendationSession {
+  id: string;
+  title: string;
+  scheduled_at: string;
+  location: string | null;
+}
 
 export interface MajorRecommendation {
   group_id: string;
@@ -88,6 +95,8 @@ export interface MajorRecommendation {
   course_codes: string[];
   year_match: boolean;
   match_pct: number;
+  already_joined: boolean;
+  upcoming_sessions: MajorRecommendationSession[];
 }
 
 export interface MajorRecommendationsResponse {

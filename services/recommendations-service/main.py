@@ -11,7 +11,7 @@ import sys
 sys.path.append("/shared")
 from shared_models import (
     Recommendation, Group, GroupMembership, UserEnrollment,
-    GroupCourse, Course, User, Base
+    GroupCourse, Course, User, StudySession, Base
 )
 from shared_database import engine, get_db, run_light_migrations
 from shared_auth import get_current_user
@@ -145,10 +145,14 @@ def _major_match_pct(user_major: str, group_major: str | None, year_match: bool)
 @app.get("/recommendations/major")
 async def get_major_recommendations(db: Session = Depends(get_db),
                                     current_user: dict = Depends(get_current_user)):
-    """View-only group suggestions based on the user's major, weighted by which
-    year the user is in (groups whose courses sit at the user's level rank
+    """Group suggestions based on the user's major, weighted by which year
+    the user is in (groups whose courses sit at the user's level rank
     first). Requires a completed profile — otherwise the frontend shows
-    "complete setting up your profile to see recommendations"."""
+    "complete setting up your profile to see recommendations". Each group
+    includes its next couple of upcoming sessions so the student can see
+    real activity before deciding whether to join."""
+    from datetime import datetime
+
     user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -166,6 +170,7 @@ async def get_major_recommendations(db: Session = Depends(get_db),
         db.query(GroupMembership).filter(GroupMembership.user_id == user.id).all()
     }
     user_level = _YEAR_TO_LEVEL.get(user.year_of_study)
+    now = datetime.utcnow()
 
     results = []
     # Every open group is shown here — not just groups whose intended_major
@@ -177,8 +182,7 @@ async def get_major_recommendations(db: Session = Depends(get_db),
                         Group.is_deleted == False)         # noqa: E712
                 .all())
     for group in groups:
-        if group.id in joined_group_ids:
-            continue
+        already_joined = group.id in joined_group_ids
 
         member_count = (db.query(GroupMembership)
                           .filter(GroupMembership.group_id == group.id)
@@ -192,6 +196,14 @@ async def get_major_recommendations(db: Session = Depends(get_db),
         year_match = bool(user_level and user_level in levels)
         match_pct = _major_match_pct(user.major, group.intended_major, year_match)
 
+        upcoming_sessions = (db.query(StudySession)
+                               .filter(StudySession.group_id == group.id,
+                                       StudySession.is_cancelled == False,   # noqa: E712
+                                       StudySession.scheduled_at >= now)
+                               .order_by(StudySession.scheduled_at.asc())
+                               .limit(2)
+                               .all())
+
         results.append({
             "group_id": str(group.id),
             "name": group.name,
@@ -200,6 +212,16 @@ async def get_major_recommendations(db: Session = Depends(get_db),
             "course_codes": course_codes,
             "year_match": year_match,
             "match_pct": match_pct,
+            "already_joined": already_joined,
+            "upcoming_sessions": [
+                {
+                    "id": str(s.id),
+                    "title": s.title,
+                    "scheduled_at": s.scheduled_at.isoformat(),
+                    "location": s.location,
+                }
+                for s in upcoming_sessions
+            ],
         })
 
     # Highest major match first, then groups at the user's course level, then by size.

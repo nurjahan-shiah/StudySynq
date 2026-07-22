@@ -17,7 +17,7 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
 import { explainRecommendation, joinGroup } from "@/lib/hooks";
-import { getMajorRecommendations, type MajorRecommendationsResponse } from "@/lib/social";
+import { getMajorRecommendations, type MajorRecommendationsResponse, type MajorRecommendation } from "@/lib/social";
 import { ProfileSetupModal } from "@/app/components/ProfileSetupModal";
 
 const T = {
@@ -240,7 +240,105 @@ function Empty({ noCourses }: { noCourses: boolean }) {
 }
 
 
-// ── "For your major" — view-only groups matched on major + year ─────────────
+// ── Session time formatting ──────────────────────────────────────────────
+
+function formatSessionTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const dateStr = sameDay
+    ? "Today"
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${dateStr} · ${timeStr}`;
+}
+
+// ── "For your major" — group card with activity + join ──────────────────────
+
+function MajorGroupCard({
+  group, onJoined,
+}: { group: MajorRecommendation; onJoined: (groupId: string) => void }) {
+  const router = useRouter();
+  const [joining, setJoining] = useState(false);
+  const [joined, setJoined] = useState(group.already_joined);
+
+  async function handleJoin() {
+    setJoining(true);
+    const res = await joinGroup(group.group_id);
+    setJoining(false);
+    if (!res.error) {
+      setJoined(true);
+      onJoined(group.group_id);
+    }
+  }
+
+  return (
+    <div className="ss-card" style={{ padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <MatchRing pct={group.match_pct} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+          <p style={{ fontSize: 13.5, fontWeight: 800, color: T.text, margin: 0 }}>{group.name}</p>
+          {group.year_match && (
+            <span style={{
+              fontSize: 9.5, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+              background: "rgba(0,184,148,.14)", color: T.green,
+            }}>
+              Your year
+            </span>
+          )}
+        </div>
+        {group.description && (
+          <p style={{ fontSize: 11.5, color: T.text2, margin: "0 0 8px", lineHeight: 1.5 }}>
+            {group.description.length > 110 ? group.description.slice(0, 110) + "…" : group.description}
+          </p>
+        )}
+        <p style={{ fontSize: 11, color: T.text2, margin: "0 0 8px" }}>
+          {group.member_count} member{group.member_count === 1 ? "" : "s"}
+          {group.course_codes.length > 0 ? ` · ${group.course_codes.slice(0, 3).join(", ")}` : ""}
+        </p>
+
+        {group.upcoming_sessions.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+            {group.upcoming_sessions.map(s => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.text2 }}>
+                <span style={{ color: T.blue }}>●</span>
+                <span style={{ fontWeight: 600, color: T.text }}>{s.title}</span>
+                <span>· {formatSessionTime(s.scheduled_at)}</span>
+                {s.location && <span>· {s.location}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={handleJoin}
+            disabled={joining || joined}
+            style={{
+              padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+              border: "none", cursor: joined ? "default" : "pointer",
+              background: joined ? T.bg3 : T.red,
+              color: joined ? T.text2 : "#fff",
+            }}
+          >
+            {joined ? "Joined ✓" : joining ? "Joining…" : "Join group"}
+          </button>
+          <button
+            onClick={() => router.push(`/groups/${group.group_id}`)}
+            style={{
+              padding: "5px 14px", borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+              border: `1px solid ${T.border}`, background: "transparent", color: T.text2, cursor: "pointer",
+            }}
+          >
+            View group
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── "For your major" section ─────────────────────────────────────────────
 
 function MajorSection({ userId }: { userId: string }) {
   const [data, setData] = useState<MajorRecommendationsResponse | null>(null);
@@ -270,7 +368,6 @@ function MajorSection({ userId }: { userId: string }) {
             {data.major} · {data.year_of_study}
           </span>
         )}
-        <span style={{ fontSize: 10.5, color: T.text2, fontWeight: 600 }}>view only</span>
       </div>
 
       {loading ? (
@@ -298,33 +395,20 @@ function MajorSection({ userId }: { userId: string }) {
           No open groups yet — check back once some have formed.
         </p>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12, marginTop: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, marginTop: 8 }}>
           {data.recommendations.map(g => (
-            <div key={g.group_id} className="ss-card" style={{ padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <MatchRing pct={g.match_pct} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                  <p style={{ fontSize: 13.5, fontWeight: 800, color: T.text, margin: 0 }}>{g.name}</p>
-                  {g.year_match && (
-                    <span style={{
-                      fontSize: 9.5, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
-                      background: "rgba(0,184,148,.14)", color: T.green,
-                    }}>
-                      Your year
-                    </span>
-                  )}
-                </div>
-                {g.description && (
-                  <p style={{ fontSize: 11.5, color: T.text2, margin: "0 0 8px", lineHeight: 1.5 }}>
-                    {g.description.length > 110 ? g.description.slice(0, 110) + "…" : g.description}
-                  </p>
-                )}
-                <p style={{ fontSize: 11, color: T.text2, margin: 0 }}>
-                  {g.member_count} member{g.member_count === 1 ? "" : "s"}
-                  {g.course_codes.length > 0 ? ` · ${g.course_codes.slice(0, 3).join(", ")}` : ""}
-                </p>
-              </div>
-            </div>
+            <MajorGroupCard
+              key={g.group_id}
+              group={g}
+              onJoined={() => {
+                setData(prev => prev ? {
+                  ...prev,
+                  recommendations: prev.recommendations.map(r =>
+                    r.group_id === g.group_id ? { ...r, already_joined: true } : r
+                  ),
+                } : prev);
+              }}
+            />
           ))}
         </div>
       )}
