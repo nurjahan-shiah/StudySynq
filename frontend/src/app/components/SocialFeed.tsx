@@ -35,12 +35,40 @@ const T = {
   green:  "var(--ss-green)",
 } as const;
 
+/** Parse a server timestamp into a Date.
+ *
+ *  The API marks timestamps as UTC explicitly ("...+00:00"). Older rows may
+ *  still arrive naive ("2026-07-25T15:00:00") with no designator at all, which
+ *  JS would otherwise read as *local* time. Append "Z" only in that case —
+ *  appending it unconditionally produces "...+00:00Z", which is invalid and
+ *  parses to NaN.
+ */
+function parseServerDate(iso: string): Date {
+  if (!iso) return new Date(NaN);
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim());
+  return new Date(hasZone ? iso : `${iso}Z`);
+}
+
+/** Full local date/time, used as the tooltip behind the relative label. */
+function absoluteTime(iso: string): string {
+  const d = parseServerDate(iso);
+  return Number.isNaN(d.getTime())
+    ? "Unknown time"
+    : d.toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+        year: "numeric", hour: "numeric", minute: "2-digit",
+      });
+}
+
 function timeAgo(iso: string): string {
-  const s = Math.max(0, (Date.now() - new Date(iso + (iso.endsWith("Z") ? "" : "Z")).getTime()) / 1000);
+  const d = parseServerDate(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  if (s < 2592000) return `${Math.floor(s / 86400)}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ── Mini profile popover (clickable username) ────────────────────────────────
@@ -233,7 +261,7 @@ function Comments({ postId, onCountChange }: { postId: string; onCountChange: (n
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{ fontSize: 11.5, margin: 0, lineHeight: 1.45, color: T.text }}>
                 <AuthorName userId={c.author_id} name={c.author_name} />
-                <span style={{ color: T.text2, fontWeight: 400, marginLeft: 6, fontSize: 10.5 }}>{timeAgo(c.created_at)}</span>
+                <span title={absoluteTime(c.created_at)} style={{ color: T.text2, fontWeight: 400, marginLeft: 6, fontSize: 10.5 }}>{timeAgo(c.created_at)}</span>
               </p>
               <p style={{ fontSize: 12, color: T.text, margin: "2px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {c.content}
@@ -325,7 +353,7 @@ function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => 
                 {post.group_name ? `in ${post.group_name}` : `from ${post.author_group}`}
               </span>
             )}
-            <span style={{ fontSize: 10.5, color: T.text2 }}>{timeAgo(post.created_at)}</span>
+            <span title={absoluteTime(post.created_at)} style={{ fontSize: 10.5, color: T.text2, cursor: "help" }}>{timeAgo(post.created_at)}</span>
           </div>
           <p style={{ fontSize: 13, color: T.text, margin: "5px 0 0", lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {post.content}

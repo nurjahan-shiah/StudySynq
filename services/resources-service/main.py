@@ -22,19 +22,87 @@ ALLOWED_FILE_TYPES = {
 }
 MAX_FILE_NAME_LEN = 255
 
+# The browser reports a MIME type (File.type -> "image/png"), but this service
+# stores and validates short extensions. Map the MIME types we accept onto
+# their extension so uploads from the web client aren't rejected outright.
+_MIME_TO_EXTENSION = {
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "text/plain": "txt",
+    "text/markdown": "md",
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "application/zip": "zip",
+    "application/x-zip-compressed": "zip",
+    "application/octet-stream": "",   # unknown — fall back to the file name
+}
 
-def validate_resource_metadata(file_name: str, file_url: str, file_type: str) -> None:
+
+def normalize_file_type(file_type: str, file_name: str = "") -> str:
+    """Reduce a client-supplied file type to one of ALLOWED_FILE_TYPES.
+
+    Accepts three shapes so the endpoint works regardless of what the caller
+    sends:
+      - a MIME type from the browser  ("image/png"      -> "png")
+      - a bare extension              ("png"            -> "png")
+      - "link" for external URLs      (passed through unchanged)
+
+    When the MIME type is missing or generic (application/octet-stream, which
+    is what browsers report for many documents), the file name's extension is
+    used instead. Returns "" when nothing usable can be derived, letting the
+    caller raise a clear validation error.
+    """
+    raw = (file_type or "").split(";")[0].strip().lower()
+
+    if raw == "link":
+        return "link"
+
+    candidate = ""
+    if "/" in raw:
+        candidate = _MIME_TO_EXTENSION.get(raw, "")
+        if not candidate:
+            # Unrecognised MIME: try the subtype ("image/svg+xml" -> "svg").
+            subtype = raw.split("/", 1)[1].split("+")[0]
+            if subtype in ALLOWED_FILE_TYPES:
+                candidate = subtype
+    elif raw in ALLOWED_FILE_TYPES:
+        candidate = raw
+
+    # Fall back to the extension on the file name.
+    if not candidate and "." in file_name:
+        ext = file_name.rsplit(".", 1)[-1].strip().lower()
+        if ext in ALLOWED_FILE_TYPES:
+            candidate = ext
+
+    return candidate
+
+
+def validate_resource_metadata(file_name: str, file_url: str, file_type: str) -> str:
     """Reject metadata that doesn't come from our own storage pipeline.
 
     Without this, any authenticated member could register an arbitrary URL
     (phishing / malware) as a "shared resource" for the whole group.
+
+    Returns the normalized file type so the caller stores a consistent value.
     """
     if not file_name or len(file_name) > MAX_FILE_NAME_LEN:
         raise HTTPException(status_code=422, detail="Invalid file name")
 
-    if file_type.lower() not in ALLOWED_FILE_TYPES:
-        raise HTTPException(status_code=422,
-                            detail=f"File type '{file_type}' is not allowed")
+    normalized = normalize_file_type(file_type, file_name)
+    if normalized not in ALLOWED_FILE_TYPES:
+        allowed = ", ".join(sorted(t for t in ALLOWED_FILE_TYPES if t != "link"))
+        raise HTTPException(
+            status_code=422,
+            detail=f"File type '{file_type}' is not supported. Allowed types: {allowed}.",
+        )
 
     parsed = urlparse(file_url)
     if parsed.scheme != "https":
@@ -42,13 +110,15 @@ def validate_resource_metadata(file_name: str, file_url: str, file_type: str) ->
 
     # Uploaded files must live in our own Supabase bucket. Plain links
     # (file_type == "link") are allowed to point elsewhere but must be https.
-    if file_type.lower() != "link" and SUPABASE_URL:
+    if normalized != "link" and SUPABASE_URL:
         expected_prefix = f"{SUPABASE_URL}/storage/v1/object/"
         if not file_url.startswith(expected_prefix):
             raise HTTPException(
                 status_code=422,
                 detail="File URL must point to StudySynq storage",
             )
+
+    return normalized
 
 
 def delete_from_storage(file_url: str) -> bool:
@@ -132,7 +202,7 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     Register an uploaded resource's metadata.
     (Actual file upload to Supabase happens on the frontend; this saves metadata.)
     """
-    validate_resource_metadata(file_name, file_url, file_type)
+    normalized_type = validate_resource_metadata(file_name, file_url, file_type)
 
     group = db.query(Group).filter(Group.id == group_id).first()
     if not group:
@@ -151,7 +221,7 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
         uploaded_by=current_user["user_id"],
         file_name=file_name,
         file_url=file_url,
-        file_type=file_type,
+        file_type=normalized_type,
     )
     db.add(new_resource)
     db.commit()

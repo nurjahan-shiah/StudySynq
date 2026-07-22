@@ -614,6 +614,19 @@ class FriendSummary(BaseModel):
     id: UUID
     name: str
     major: Optional[str] = None
+    friends_since: Optional[UTCDatetime] = None
+
+class FriendRequestSummary(BaseModel):
+    """An incoming friend request awaiting the current user's decision."""
+    id: UUID
+    name: str
+    major: Optional[str] = None
+    requested_at: Optional[UTCDatetime] = None
+
+class BlockedUserSummary(BaseModel):
+    id: UUID
+    name: str
+    blocked_at: Optional[UTCDatetime] = None
 
 # ============================================================================
 # AI Study Assistant (Resources tab)

@@ -5,6 +5,8 @@ All services use the same PostgreSQL instance.
 """
 
 import os
+from typing import Iterator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -28,13 +30,14 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-def get_db() -> Session:
+def get_db() -> Iterator[Session]:
     """
-    FastAPI dependency: returns a database session.
-    Usage in a route:
-        from fastapi import Depends
-        def my_route(db: Session = Depends(get_db)):
-            ...
+    FastAPI dependency: yields a database session.
+
+    Annotated as Iterator[Session] rather than Session because this is a
+    generator — it yields the session and closes it on teardown. FastAPI
+    resolves the yielded value, so routes still annotate the parameter as
+    `db: Session = Depends(get_db)`.
     """
     db = SessionLocal()
     try:
@@ -82,6 +85,9 @@ def run_light_migrations(engine_=None):
         "ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
         "ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS deleted_by UUID",
+        # Friend blocking.
+        "ALTER TABLE friendships ADD COLUMN IF NOT EXISTS blocked_by UUID",
+        "ALTER TABLE friendships ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP",
     ]
     for stmt in statements:
         try:

@@ -413,9 +413,16 @@ class PostLike(Base):
 class FriendshipStatus(str, enum.Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
+    BLOCKED = "blocked"
 
 class Friendship(Base):
-    """Directed friend request: requester -> addressee. Accepted = friends."""
+    """Directed friend request: requester -> addressee. Accepted = friends.
+
+    A blocked row keeps the pair recorded but with status="blocked" and
+    blocked_by set to whoever initiated it. Because the row is directed but a
+    block is not, blocked_by is what tells the two sides apart: the blocker
+    can undo it, the blocked user just sees nothing.
+    """
     __tablename__ = "friendships"
     __table_args__ = (
         UniqueConstraint('requester_id', 'addressee_id', name='unique_friend_pair'),
@@ -427,6 +434,9 @@ class Friendship(Base):
     status = Column(String(20), default=FriendshipStatus.PENDING.value, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     accepted_at = Column(DateTime, nullable=True)
+    # Who performed the block (null unless status == "blocked").
+    blocked_by = Column(UUID(as_uuid=True), nullable=True)
+    blocked_at = Column(DateTime, nullable=True)
 
 # ============================================================================
 # Moderation audit trail (US-F.2)

@@ -192,6 +192,47 @@ export const sendFriendRequest = (userId: string) =>
 export const acceptFriendRequest = (userId: string) =>
   apiClient.post<{ status: string }>(`/social/friends/${userId}/accept`, {});
 
+// ── Friend management ────────────────────────────────────────────────────────
+
+export interface Friend {
+  id: string;
+  name: string;
+  major: string | null;
+  friends_since: string | null;
+}
+
+export interface FriendRequest {
+  id: string;
+  name: string;
+  major: string | null;
+  requested_at: string | null;
+}
+
+export interface BlockedUser {
+  id: string;
+  name: string;
+  blocked_at: string | null;
+}
+
+export const getFriends = () =>
+  apiClient.get<Friend[]>("/social/friends");
+
+export const getFriendRequests = () =>
+  apiClient.get<FriendRequest[]>("/social/friends/requests");
+
+export const getBlockedUsers = () =>
+  apiClient.get<BlockedUser[]>("/social/friends/blocked");
+
+/** Unfriend, withdraw a sent request, or decline a received one. */
+export const removeFriend = (userId: string) =>
+  apiClient.delete(`/social/friends/${userId}`);
+
+export const blockUser = (userId: string) =>
+  apiClient.post<{ status: string }>(`/social/friends/${userId}/block`, {});
+
+export const unblockUser = (userId: string) =>
+  apiClient.delete(`/social/friends/${userId}/block`);
+
 // ── AI Study Assistant ───────────────────────────────────────────────────────
 
 export interface TutorMessage {
