@@ -15,6 +15,7 @@ import { useGroup, useGroupMembers } from "@/lib/hooks";
 import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
+import { GroupSessionsCalendar } from "@/app/components/GroupSessionsCalendar";
 
 const T = {
   bg:     "var(--bg)",
@@ -188,7 +189,7 @@ export default function GroupDetailPage() {
         )}
 
         {tab === "sessions" && (
-          <LinkOut icon="▦" label="Sessions live on the Sessions page." href="/sessions" router={router} />
+          <GroupSessionsCalendar groupId={groupId} />
         )}
 
         {tab === "resources" && (
@@ -324,29 +325,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div style={{ background: T.bg3, borderRadius: 10, padding: "10px 14px", border: `1px solid ${T.border}` }}>
       <p style={{ fontSize: 10, color: T.text2, margin: "0 0 2px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</p>
       <p style={{ fontSize: 14, fontWeight: 700, color: T.text, margin: 0 }}>{value}</p>
-    </div>
-  );
-}
-
-function LinkOut({ icon, label, href, router }: {
-  icon: string; label: string; href: string; router: ReturnType<typeof useRouter>;
-}) {
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      height: 200, gap: 12, color: T.text2,
-    }}>
-      <span style={{ fontSize: 28 }}>{icon}</span>
-      <p style={{ fontSize: 14, margin: 0 }}>{label}</p>
-      <button
-        onClick={() => router.push(href)}
-        style={{
-          padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-          border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",
-        }}
-      >
-        Open
-      </button>
     </div>
   );
 }
