@@ -782,52 +782,76 @@ async def admin_seed_courses(
     (/shared/york_courses_seed.json: faculty, code, name, year level).
 
     Existing course codes are skipped, so this is safe to run repeatedly and
-    never overwrites admin edits.
+    never overwrites admin edits. Hardened to always return valid JSON —
+    never a raw crash — so failures are visible in the Logs tab even without
+    shell access.
     """
     import json
     import os
+    import traceback
 
-    seed_path = None
-    for candidate in ("/shared/york_courses_seed.json",
-                      os.path.join(os.path.dirname(__file__), "..", "..", "shared", "york_courses_seed.json")):
-        if os.path.exists(candidate):
-            seed_path = candidate
-            break
-    if not seed_path:
-        raise HTTPException(status_code=500, detail="Seed catalogue file not found on this deployment")
+    try:
+        seed_path = None
+        candidates = [
+            "/shared/york_courses_seed.json",
+            os.path.join(os.path.dirname(__file__), "..", "..", "shared", "york_courses_seed.json"),
+            os.path.join(os.getcwd(), "shared", "york_courses_seed.json"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                seed_path = candidate
+                break
 
-    with open(seed_path) as f:
-        entries = json.load(f)
+        if not seed_path:
+            print(f"[seed] Seed file not found. Checked: {candidates}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Seed catalogue file not found on this deployment. Checked paths: {candidates}",
+            )
 
-    existing_codes = {row[0] for row in db.query(Course.course_code).all()}
+        print(f"[seed] Loading seed file from {seed_path}")
+        with open(seed_path) as f:
+            entries = json.load(f)
+        print(f"[seed] Loaded {len(entries)} entries from seed file")
 
-    added = 0
-    for e in entries:
-        code = e.get("course_code")
-        if not code or code in existing_codes:
-            continue
-        db.add(Course(
-            id=uuid4(),
-            course_code=code,
-            course_name=e.get("course_name", code),
-            department=e.get("department", code.split()[0]),
-            faculty=e.get("faculty"),
-            year_level=e.get("year_level"),
-        ))
-        existing_codes.add(code)
-        added += 1
+        existing_codes = {row[0] for row in db.query(Course.course_code).all()}
 
-    log_action(
-        db,
-        current_user["user_id"],
-        "seed_courses",
-        "catalogue",
-        f"Seeded York catalogue: {added} added, {len(entries) - added} already present",
-    )
-    db.commit()
+        added = 0
+        for e in entries:
+            code = e.get("course_code")
+            if not code or code in existing_codes:
+                continue
+            db.add(Course(
+                id=uuid4(),
+                course_code=code,
+                course_name=e.get("course_name", code),
+                department=e.get("department", code.split()[0]),
+                faculty=e.get("faculty"),
+                year_level=e.get("year_level"),
+            ))
+            existing_codes.add(code)
+            added += 1
 
-    return {"added": added, "skipped": len(entries) - added, "total_in_seed": len(entries)}
+        log_action(
+            db,
+            current_user["user_id"],
+            "seed_courses",
+            "catalogue",
+            f"Seeded York catalogue: {added} added, {len(entries) - added} already present",
+        )
+        db.commit()
 
+        result = {"added": added, "skipped": len(entries) - added, "total_in_seed": len(entries)}
+        print(f"[seed] Done: {result}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        print(f"[seed] UNHANDLED ERROR: {exc}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Seed failed: {exc}")
 
 
 @app.delete(
