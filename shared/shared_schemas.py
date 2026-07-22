@@ -4,10 +4,33 @@ Pydantic request/response schemas used across microservices.
 Defines the contract between services and clients.
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, PlainSerializer, field_validator
+
+
+def _serialize_utc(value: Optional[datetime]) -> Optional[str]:
+    """Emit an ISO-8601 string that is explicitly UTC.
+
+    Datetime columns here are naive `DateTime` (UTC by convention), so a
+    plain `.isoformat()` yields "2026-07-25T15:00:00" with no designator —
+    and `new Date(...)` in the browser reads a bare date-time like that as
+    *local* time, silently shifting every timestamp by the viewer's offset.
+    Tagging the value as +00:00 lets the frontend convert correctly.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+# Use in place of `datetime` on any response schema field.
+UTCDatetime = Annotated[
+    datetime,
+    PlainSerializer(_serialize_utc, return_type=str, when_used="json"),
+]
 
 
 def _coerce_date_only(v):
@@ -70,7 +93,7 @@ class UserBase(BaseModel):
     name: str
     email: str
     role: str
-    created_at: datetime
+    created_at: UTCDatetime
 
 PROFILE_PRIVACY_FIELDS = {"major", "year_of_study", "bio", "email"}
 
@@ -289,7 +312,7 @@ class GroupOwnershipTransfer(BaseModel):
 class GroupResponse(GroupBase):
     id: UUID
     created_by: UUID
-    created_at: datetime
+    created_at: UTCDatetime
 
     class Config:
         from_attributes = True
@@ -315,7 +338,7 @@ class GroupMemberResponse(BaseModel):
 
 class StudySessionBase(BaseModel):
     title: str
-    scheduled_at: datetime
+    scheduled_at: UTCDatetime
     location: Optional[str] = None
     description: Optional[str] = None
 
@@ -324,7 +347,7 @@ class StudySessionCreate(StudySessionBase):
 
 class StudySessionUpdate(BaseModel):
     title: Optional[str] = None
-    scheduled_at: Optional[datetime] = None
+    scheduled_at: Optional[UTCDatetime] = None
     location: Optional[str] = None
     description: Optional[str] = None
 
@@ -332,7 +355,7 @@ class StudySessionResponse(StudySessionBase):
     id: UUID
     group_id: UUID
     created_by: UUID
-    created_at: datetime
+    created_at: UTCDatetime
     is_cancelled: bool = False
 
     class Config:
@@ -346,7 +369,7 @@ class SessionRSVPResponse(BaseModel):
     session_id: UUID
     user_id: UUID
     status: str
-    created_at: datetime
+    created_at: UTCDatetime
 
     class Config:
         from_attributes = True
@@ -367,7 +390,7 @@ class ResourceResponse(ResourceBase):
     id: UUID
     group_id: UUID
     uploaded_by: UUID
-    created_at: datetime
+    created_at: UTCDatetime
 
     class Config:
         from_attributes = True
@@ -399,7 +422,7 @@ class NotificationResponse(BaseModel):
     message: str
     link: Optional[str] = None
     is_read: bool
-    created_at: datetime
+    created_at: UTCDatetime
     metadata: Optional[Dict[str, Any]] = None
 
 class UnreadCountResponse(BaseModel):
@@ -427,8 +450,8 @@ class AnnouncementResponse(BaseModel):
     title: str
     message: str
     is_pinned: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
 
 # ============================================================================
 # Task Schemas (US-E.3 @author: Ahmed)
@@ -437,7 +460,7 @@ class AnnouncementResponse(BaseModel):
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[UTCDatetime] = None
     priority: str = "medium"
     assigned_to: UUID
 
@@ -446,7 +469,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[UTCDatetime] = None
     priority: Optional[str] = None
     assigned_to: Optional[UUID] = None
     status: Optional[str] = None
@@ -486,10 +509,10 @@ class TaskResponse(BaseModel):
     description: Optional[str] = None
     status: str
     priority: str
-    due_date: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    completed_at: Optional[datetime] = None
+    due_date: Optional[UTCDatetime] = None
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
+    completed_at: Optional[UTCDatetime] = None
 
 # ============================================================================
 # Error Schemas
@@ -535,8 +558,8 @@ class CourseRequestResponse(BaseModel):
     status: str
     reason: Optional[str] = None
     admin_note: Optional[str] = None
-    created_at: datetime
-    resolved_at: Optional[datetime] = None
+    created_at: UTCDatetime
+    resolved_at: Optional[UTCDatetime] = None
 
 # ============================================================================
 # Social Feed Schemas (dashboard)
@@ -571,7 +594,7 @@ class CommentResponse(BaseModel):
     author_id: UUID
     author_name: str
     content: str
-    created_at: datetime
+    created_at: UTCDatetime
 
 class PostResponse(BaseModel):
     id: UUID
@@ -581,7 +604,7 @@ class PostResponse(BaseModel):
     group_id: Optional[UUID] = None
     group_name: Optional[str] = None     # group the post was tagged with
     content: str
-    created_at: datetime
+    created_at: UTCDatetime
     like_count: int = 0
     comment_count: int = 0
     liked_by_me: bool = False

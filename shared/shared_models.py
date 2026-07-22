@@ -120,6 +120,12 @@ class StudySession(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_cancelled    = Column(Boolean, default=False)
+    # US-F.2 moderation soft-delete. Distinct from is_cancelled: a leader
+    # cancels a session (members still see it, struck through), an admin
+    # deletes it (nobody sees it).
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
     group = relationship("Group", back_populates="sessions")
@@ -421,3 +427,34 @@ class Friendship(Base):
     status = Column(String(20), default=FriendshipStatus.PENDING.value, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     accepted_at = Column(DateTime, nullable=True)
+
+# ============================================================================
+# Moderation audit trail (US-F.2)
+# ============================================================================
+
+class ModerationLog(Base):
+    """Record of a content moderation action.
+
+    Lives in shared/ rather than admin-service so that *any* service which
+    soft-deletes content can append to the same audit trail. In particular a
+    group leader deleting their own group writes here too, which is what
+    makes that deletion visible — and therefore restorable — from the admin
+    moderation console.
+
+    `action` is "delete" or "restore". `admin_id` is whoever performed it,
+    which is not necessarily an admin (a group leader deleting their own
+    group is recorded with their own id and actor_role="leader").
+    """
+    __tablename__ = "moderation_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    admin_id = Column(UUID(as_uuid=True), nullable=False)
+    entity_type = Column(String(20), nullable=False)   # group | resource | announcement | session
+    entity_id = Column(String(255), nullable=False)
+    action = Column(String(50), nullable=False, default="delete")
+    reason = Column(Text, nullable=True)
+    target_title = Column(String(255), nullable=True)
+    # Distinguishes an admin moderating someone else's content from an owner
+    # deleting their own. Nullable so pre-existing rows stay valid.
+    actor_role = Column(String(20), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

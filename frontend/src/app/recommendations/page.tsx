@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
-import { explainRecommendation, joinGroup } from "@/lib/hooks";
+import { explainRecommendation, joinGroup, leaveGroup } from "@/lib/hooks";
 import { getMajorRecommendations, type MajorRecommendationsResponse, type MajorRecommendation } from "@/lib/social";
 import { ProfileSetupModal } from "@/app/components/ProfileSetupModal";
 
@@ -98,10 +98,15 @@ function MatchRing({ pct }: { pct: number }) {
 // ── Recommendation card ──────────────────────────────────────────────────
 
 function RecommendationCard({
-  rec, onJoined,
-}: { rec: RecommendationRow; onJoined: (groupId: string) => void }) {
+  rec, joinedExternally, onJoined,
+}: {
+  rec: RecommendationRow;
+  joinedExternally: boolean;
+  onJoined: (groupId: string) => void;
+}) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explanationError, setExplanationError] = useState<string | null>(null);
@@ -109,14 +114,23 @@ function RecommendationCard({
   const pct = toPercent(rec.score);
   const color = matchColor(pct);
 
+  // The same group can appear in both this list and "For your major", so a
+  // join over there has to disable the button here too — otherwise clicking
+  // it returns "Already a member" and the user sees an error for something
+  // they already did.
+  const isJoined = joined || joinedExternally;
+
   async function handleJoin() {
     setJoining(true);
+    setJoinError(null);
     const res = await joinGroup(rec.group_id);
     setJoining(false);
-    if (!res.error) {
-      setJoined(true);
-      onJoined(rec.group_id);
+    if (res.error) {
+      setJoinError(res.error);
+      return;
     }
+    setJoined(true);
+    onJoined(rec.group_id);
   }
 
   async function handleExplain() {
@@ -182,17 +196,24 @@ function RecommendationCard({
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
         <button
           onClick={handleJoin}
-          disabled={joining || joined}
+          disabled={joining || isJoined}
           style={{
             padding: "8px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-            border: "none", cursor: joined ? "default" : "pointer",
-            background: joined ? T.bg3 : T.red,
-            color: joined ? T.text2 : "#fff",
+            border: "none", cursor: isJoined ? "default" : "pointer",
+            background: isJoined ? T.bg3 : T.red,
+            color: isJoined ? T.text2 : "#fff",
             whiteSpace: "nowrap",
           }}
         >
-          {joined ? "Joined ✓" : joining ? "Joining…" : "Join group"}
+          {isJoined ? "Joined ✓" : joining ? "Joining…" : "Join group"}
         </button>
+        {joinError && (
+          <p role="alert" style={{
+            fontSize: 11, color: T.red, margin: 0, maxWidth: 150, lineHeight: 1.4,
+          }}>
+            {joinError}
+          </p>
+        )}
         <button
           onClick={() => router.push(`/groups/${rec.group_id}`)}
           style={{
@@ -256,20 +277,41 @@ function formatSessionTime(iso: string): string {
 // ── "For your major" — group card with activity + join ──────────────────────
 
 function MajorGroupCard({
-  group, onJoined,
-}: { group: MajorRecommendation; onJoined: (groupId: string) => void }) {
+  group, onMembershipChange,
+}: {
+  group: MajorRecommendation;
+  onMembershipChange: (groupId: string, joined: boolean) => void;
+}) {
   const router = useRouter();
-  const [joining, setJoining] = useState(false);
-  const [joined, setJoined] = useState(group.already_joined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Membership is owned by the parent so that joining here also updates the
+  // course-overlap list below, which can contain the same group.
+  const joined = group.already_joined;
 
   async function handleJoin() {
-    setJoining(true);
+    setBusy(true);
+    setError(null);
     const res = await joinGroup(group.group_id);
-    setJoining(false);
-    if (!res.error) {
-      setJoined(true);
-      onJoined(group.group_id);
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
     }
+    onMembershipChange(group.group_id, true);
+  }
+
+  async function handleLeave() {
+    setBusy(true);
+    setError(null);
+    const res = await leaveGroup(group.group_id);
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    onMembershipChange(group.group_id, false);
   }
 
   return (
@@ -310,18 +352,21 @@ function MajorGroupCard({
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button
-            onClick={handleJoin}
-            disabled={joining || joined}
+            onClick={joined ? handleLeave : handleJoin}
+            disabled={busy}
             style={{
               padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-              border: "none", cursor: joined ? "default" : "pointer",
-              background: joined ? T.bg3 : T.red,
+              cursor: busy ? "wait" : "pointer",
+              border: joined ? `1px solid ${T.border}` : "none",
+              background: joined ? "transparent" : T.red,
               color: joined ? T.text2 : "#fff",
             }}
           >
-            {joined ? "Joined ✓" : joining ? "Joining…" : "Join group"}
+            {busy
+              ? (joined ? "Leaving…" : "Joining…")
+              : (joined ? "Leave group" : "Join group")}
           </button>
           <button
             onClick={() => router.push(`/groups/${group.group_id}`)}
@@ -332,7 +377,20 @@ function MajorGroupCard({
           >
             View group
           </button>
+          {joined && !busy && (
+            <span style={{
+              fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+              background: "rgba(0,184,148,.14)", color: T.green,
+            }}>
+              Member
+            </span>
+          )}
         </div>
+        {error && (
+          <p role="alert" style={{ fontSize: 11, color: T.red, margin: "7px 0 0", lineHeight: 1.4 }}>
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -340,19 +398,66 @@ function MajorGroupCard({
 
 // ── "For your major" section ─────────────────────────────────────────────
 
-function MajorSection({ userId }: { userId: string }) {
+const MAJOR_PAGE_SIZE = 30;
+
+function MajorSection({
+  userId, onMembershipChange,
+}: {
+  userId: string;
+  onMembershipChange: (groupId: string, joined: boolean) => void;
+}) {
   const [data, setData] = useState<MajorRecommendationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await getMajorRecommendations();
+    setError(null);
+    const res = await getMajorRecommendations({ limit: MAJOR_PAGE_SIZE, offset: 0 });
+    if (res.error) setError(res.error);
     setData(res.data ?? null);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function loadMore() {
+    if (!data) return;
+    setLoadingMore(true);
+    const res = await getMajorRecommendations({
+      limit: MAJOR_PAGE_SIZE,
+      offset: data.recommendations.length,
+    });
+    setLoadingMore(false);
+    if (res.error || !res.data) return;
+    const next = res.data;
+    setData(prev => prev ? {
+      ...next,
+      recommendations: [...prev.recommendations, ...next.recommendations],
+    } : next);
+  }
+
+  // Membership is owned here so a join/leave also updates the course-overlap
+  // list below, which can contain the same group.
+  function setMembership(groupId: string, joined: boolean) {
+    setData(prev => prev ? {
+      ...prev,
+      recommendations: prev.recommendations.map(r =>
+        r.group_id === groupId
+          ? {
+              ...r,
+              already_joined: joined,
+              member_count: Math.max(0, r.member_count + (joined ? 1 : -1)),
+            }
+          : r
+      ),
+    } : prev);
+    onMembershipChange(groupId, joined);
+  }
+
+  const hasMore = Boolean(data && data.recommendations.length < data.total);
 
   return (
     <section style={{ marginBottom: 26 }}>
@@ -368,11 +473,24 @@ function MajorSection({ userId }: { userId: string }) {
             {data.major} · {data.year_of_study}
           </span>
         )}
+        {data && data.total > 0 && (
+          <span style={{ fontSize: 10.5, color: T.text2, fontWeight: 600 }}>
+            {data.total} group{data.total === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
 
       {loading ? (
         <p style={{ fontSize: 12.5, color: T.text2 }}>Loading…</p>
-      ) : !data ? null : !data.profile_complete ? (
+      ) : error ? (
+        <p role="alert" style={{ fontSize: 12.5, color: T.red, margin: "6px 0 0" }}>
+          Couldn&apos;t load group suggestions: {error}
+        </p>
+      ) : !data ? null : data.not_applicable ? (
+        <p style={{ fontSize: 12.5, color: T.text2, margin: "6px 0 0" }}>
+          {data.reason ?? "Group recommendations are personalised to a student's major and year."}
+        </p>
+      ) : !data.profile_complete ? (
         <div style={{
           background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12,
           padding: "18px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
@@ -395,22 +513,29 @@ function MajorSection({ userId }: { userId: string }) {
           No open groups yet — check back once some have formed.
         </p>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, marginTop: 8 }}>
-          {data.recommendations.map(g => (
-            <MajorGroupCard
-              key={g.group_id}
-              group={g}
-              onJoined={() => {
-                setData(prev => prev ? {
-                  ...prev,
-                  recommendations: prev.recommendations.map(r =>
-                    r.group_id === g.group_id ? { ...r, already_joined: true } : r
-                  ),
-                } : prev);
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, marginTop: 8 }}>
+            {data.recommendations.map(g => (
+              <MajorGroupCard
+                key={g.group_id}
+                group={g}
+                onMembershipChange={setMembership}
+              />
+            ))}
+          </div>
+          {hasMore && (
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="ss-btn-ghost"
+              style={{ fontSize: 12, padding: "8px 18px", marginTop: 12 }}
+            >
+              {loadingMore
+                ? "Loading…"
+                : `Show more (${data.total - data.recommendations.length} left)`}
+            </button>
+          )}
+        </>
       )}
 
       {editOpen && (
@@ -434,6 +559,17 @@ export default function RecommendationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Groups joined during this page visit. The same group can appear in both
+  // lists, so this is lifted here to keep their buttons in sync.
+  const [joinedGroupIds, setJoinedGroupIds] = useState<Set<string>>(new Set());
+
+  const handleMembershipChange = useCallback((groupId: string, joined: boolean) => {
+    setJoinedGroupIds(prev => {
+      const next = new Set(prev);
+      if (joined) next.add(groupId); else next.delete(groupId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -479,7 +615,9 @@ export default function RecommendationsPage() {
         </div>
 
         <div style={{ marginTop: 20 }}>
-          {userId && <MajorSection userId={userId} />}
+          {userId && (
+            <MajorSection userId={userId} onMembershipChange={handleMembershipChange} />
+          )}
         </div>
 
         <h2 style={{ fontSize: 14, fontWeight: 800, color: T.text, margin: "0 0 2px" }}>
@@ -512,7 +650,9 @@ export default function RecommendationsPage() {
                 <RecommendationCard
                   key={rec.group_id}
                   rec={rec}
+                  joinedExternally={joinedGroupIds.has(rec.group_id)}
                   onJoined={(groupId) => {
+                    handleMembershipChange(groupId, true);
                     setTimeout(() => {
                       setDismissed(prev => new Set(prev).add(groupId));
                     }, 1200);

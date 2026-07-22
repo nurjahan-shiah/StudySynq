@@ -68,6 +68,11 @@ def run_light_migrations(engine_=None):
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS year_level INTEGER",
         "ALTER TABLE groups ADD COLUMN IF NOT EXISTS session VARCHAR(10)",
         "ALTER TABLE groups ADD COLUMN IF NOT EXISTS section VARCHAR(20)",
+        # US-F.2: sessions are moderatable too (admin delete, distinct from
+        # a leader's cancel).
+        "ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
+        "ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS deleted_by UUID",
     ]
     for stmt in statements:
         try:

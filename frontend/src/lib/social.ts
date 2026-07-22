@@ -101,13 +101,32 @@ export interface MajorRecommendation {
 
 export interface MajorRecommendationsResponse {
   profile_complete: boolean;
+  /** True for admin accounts: this feature is student-scoped, so the UI
+   *  should explain that rather than prompt for a major/year. */
+  not_applicable: boolean;
+  reason?: string;
   major: string | null;
   year_of_study: string | null;
+  total: number;
+  limit: number;
+  offset: number;
   recommendations: MajorRecommendation[];
 }
 
-export const getMajorRecommendations = () =>
-  apiClient.get<MajorRecommendationsResponse>("/recommendations/major");
+export const getMajorRecommendations = (opts?: {
+  limit?: number;
+  offset?: number;
+  includeJoined?: boolean;
+}) => {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts?.includeJoined !== undefined) params.set("include_joined", String(opts.includeJoined));
+  const qs = params.toString();
+  return apiClient.get<MajorRecommendationsResponse>(
+    `/recommendations/major${qs ? `?${qs}` : ""}`
+  );
+};
 
 // ── Social feed ──────────────────────────────────────────────────────────────
 

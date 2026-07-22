@@ -28,6 +28,21 @@ def _has_occurred(scheduled_at: datetime) -> bool:
         scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
     return scheduled_at <= datetime.now(timezone.utc)
 
+def _live_sessions(db: Session):
+    """Base query excluding admin-moderated (soft-deleted) sessions.
+
+    is_deleted is moderation; is_cancelled is a leader cancelling a session
+    that members should still see struck through. Only the former hides a
+    session entirely.
+    """
+    return db.query(StudySession).filter(StudySession.is_deleted == False)  # noqa: E712
+
+def _get_live_session_or_404(db: Session, session_id: str) -> StudySession:
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
 async def lifespan(app: FastAPI):
     print("Sessions Service starting...")
     init_db()
@@ -44,7 +59,7 @@ async def health():
 async def list_sessions(group_id: str, db: Session = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
     """List all sessions for a group."""
-    return (db.query(StudySession)
+    return (_live_sessions(db)
               .filter(StudySession.group_id == group_id)
               .order_by(StudySession.scheduled_at).all())
 
@@ -74,7 +89,7 @@ async def create_session(group_id: str, data: StudySessionCreate,
         raise HTTPException(status_code=400, detail="scheduled_at must be a future date and time")
 
     # Check for scheduling conflict within the same group
-    conflict = (db.query(StudySession)
+    conflict = (_live_sessions(db)
                   .filter(StudySession.group_id == group_id,
                           StudySession.scheduled_at == data.scheduled_at)
                   .first())
@@ -118,7 +133,7 @@ async def create_session(group_id: str, data: StudySessionCreate,
 async def get_session(session_id: str, db: Session = Depends(get_db),
                       current_user: dict = Depends(get_current_user)):
     """Get session detail with attendee list."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     attendees = db.query(SessionRSVP).filter(SessionRSVP.session_id == session_id).all()
@@ -132,7 +147,7 @@ async def rsvp_session(session_id: str, data: SessionRSVPCreate,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(get_current_user)):
     """RSVP to a session (upsert — updates if already exists)."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.is_cancelled:
@@ -164,7 +179,7 @@ async def update_session(session_id: str, data: StudySessionUpdate,
                          db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
     """Update a session (creator or admin only)."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
@@ -200,7 +215,7 @@ async def update_session(session_id: str, data: StudySessionUpdate,
 async def cancel_session(session_id: str, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
     """Cancel a session (creator or admin only)."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
@@ -238,7 +253,7 @@ async def summarize_session_notes(
     
 ):
     """Summarize session notes using AI and save as a group resource."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.is_cancelled:
@@ -285,7 +300,7 @@ Notes:
 async def delete_session(session_id: str, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
     """Delete a session (creator or admin only)."""
-    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":

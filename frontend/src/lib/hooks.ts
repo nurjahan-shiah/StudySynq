@@ -360,29 +360,57 @@ export function useAdminStats() {
 
 // ── Moderation console (US-F.2) ──────────────────────────────────────────────
 
-export interface ModerationGroup {
+/** Soft-delete metadata shared by every moderatable entity. */
+export interface ModerationDeletable {
+  is_deleted: boolean;
+  deleted_at: string | null;
+  deleted_by_name: string | null;
+}
+
+export interface ModerationGroup extends ModerationDeletable {
   id: string; name: string; description: string | null;
   created_by: string; creator_name: string; member_count: number; created_at: string;
 }
-export interface ModerationResource {
+export interface ModerationResource extends ModerationDeletable {
   id: string; file_name: string; file_type: string;
   uploaded_by: string; uploader_name: string; group_id: string; group_name: string; created_at: string;
 }
-export interface ModerationAnnouncement {
+export interface ModerationAnnouncement extends ModerationDeletable {
   id: string; title: string; message: string;
   author_id: string; author_name: string; group_id: string; group_name: string;
   is_pinned: boolean; created_at: string;
 }
+export interface ModerationSession extends ModerationDeletable {
+  id: string; title: string; description: string | null; location: string | null;
+  scheduled_at: string; created_by: string; creator_name: string;
+  group_id: string; group_name: string; is_cancelled: boolean; created_at: string;
+}
 export interface ModerationLog {
-  id: string; admin_id: string; admin_name: string;
+  id: string; admin_id: string; admin_name: string; actor_role: string;
   entity_type: string; entity_id: string; action: string;
   reason: string | null; target_title: string | null; created_at: string;
 }
+/** Audit log is paginated: the endpoint returns an envelope, not a bare array. */
+export interface ModerationAuditPage {
+  total: number; limit: number; offset: number; logs: ModerationLog[];
+}
 
-export function useModerationGroups() { return useFetch<ModerationGroup[]>("/admin/moderation/groups"); }
-export function useModerationResources() { return useFetch<ModerationResource[]>("/admin/moderation/resources"); }
-export function useModerationAnnouncements() { return useFetch<ModerationAnnouncement[]>("/admin/moderation/announcements"); }
-export function useModerationAuditLog() { return useFetch<ModerationLog[]>("/admin/moderation/audit-logs"); }
+const deletedQuery = (includeDeleted?: boolean) =>
+  includeDeleted ? "?include_deleted=true" : "";
+
+export function useModerationGroups(includeDeleted?: boolean) {
+  return useFetch<ModerationGroup[]>(`/admin/moderation/groups${deletedQuery(includeDeleted)}`);
+}
+export function useModerationResources(includeDeleted?: boolean) {
+  return useFetch<ModerationResource[]>(`/admin/moderation/resources${deletedQuery(includeDeleted)}`);
+}
+export function useModerationAnnouncements(includeDeleted?: boolean) {
+  return useFetch<ModerationAnnouncement[]>(`/admin/moderation/announcements${deletedQuery(includeDeleted)}`);
+}
+export function useModerationSessions(includeDeleted?: boolean) {
+  return useFetch<ModerationSession[]>(`/admin/moderation/sessions${deletedQuery(includeDeleted)}`);
+}
+export function useModerationAuditLog() { return useFetch<ModerationAuditPage>("/admin/moderation/audit-logs"); }
 
 // ── Platform analytics (US-F.6) ──────────────────────────────────────────────
 

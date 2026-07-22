@@ -4,7 +4,10 @@ Recommendations Service - serve study-group recommendations.
 Reads precomputed scores from the recommendations table (written by the ETL/ML pipeline).
 Runs on port 8008
 """
-from fastapi import FastAPI, HTTPException, status, Depends
+from datetime import datetime
+
+from fastapi import FastAPI, HTTPException, status, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import sys
@@ -15,6 +18,7 @@ from shared_models import (
 )
 from shared_database import engine, get_db, run_light_migrations
 from shared_auth import get_current_user
+from shared_time import iso_utc
 
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -115,53 +119,90 @@ def _course_level(course_code: str) -> int | None:
 def _major_match_pct(user_major: str, group_major: str | None, year_match: bool) -> int:
     """
     Percentage match between the user's major and a group's intended major.
-    Groups aren't restricted to an exact major match — every open group is
-    shown, scored by how relevant it is:
-      - Exact major match           -> 100 (or 100 with the year bonus, capped)
-      - No intended major set       -> 40  (open to everyone, moderate baseline)
-      - Partial/related major       -> scaled by shared words between the two
-        major names (e.g. "Software Engineering" vs "Computer Engineering"
-        share "Engineering")
-    A +10 bonus is added when the group's courses sit at the user's year
-    level, capped at 100.
+
+    Every open group is shown, scored by how relevant it is:
+      - Exact major match      -> 95 base (105 -> capped 100 with the year bonus)
+      - Related major          -> word overlap between the two major names,
+        scaled into a 45-85 band, so "Computer Science" vs "Computer
+        Engineering" reads as a real partial match
+      - No intended major set  -> 35, an open-to-anyone baseline that
+        deliberately ranks *below* any genuine partial match
+      - Unrelated major        -> 15 floor
+
+    The year bonus (+10, capped at 100) applies when the group's courses sit
+    at the user's course level.
     """
     if not group_major:
-        base = 40
+        base = 35
     elif group_major.strip().lower() == user_major.strip().lower():
-        base = 100
+        base = 95
     else:
-        user_words = set(user_major.lower().split())
-        group_words = set(group_major.lower().split())
-        overlap = len(user_words & group_words)
-        union = len(user_words | group_words) or 1
-        base = round((overlap / union) * 80)  # partial credit only, never hits 100
+        # Ignore filler words so "Computer Science" vs "Computer Engineering"
+        # isn't diluted, and compare on the meaningful terms only.
+        stop = {"and", "of", "the", "in", "with", "&"}
+        user_words = {w for w in user_major.lower().split() if w not in stop}
+        group_words = {w for w in group_major.lower().split() if w not in stop}
+        union = user_words | group_words
+        if not union:
+            base = 35
+        else:
+            ratio = len(user_words & group_words) / len(union)
+            # No shared terms at all -> unrelated floor, not a 0 that would
+            # rank below groups with no major set.
+            base = 15 if ratio == 0 else round(45 + ratio * 40)
 
     if year_match:
-        base = min(100, base + 10)
+        base += 10
 
-    return max(base, 5)
+    return max(5, min(100, base))
 
 
 @app.get("/recommendations/major")
-async def get_major_recommendations(db: Session = Depends(get_db),
-                                    current_user: dict = Depends(get_current_user)):
-    """Group suggestions based on the user's major, weighted by which year
-    the user is in (groups whose courses sit at the user's level rank
-    first). Requires a completed profile — otherwise the frontend shows
-    "complete setting up your profile to see recommendations". Each group
-    includes its next couple of upcoming sessions so the student can see
-    real activity before deciding whether to join."""
-    from datetime import datetime
+async def get_major_recommendations(
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    include_joined: bool = Query(True, description="Include groups the user is already in"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Group suggestions ranked by how well each fits the user's major/year.
 
+    Each group carries its next couple of upcoming sessions so a student can
+    see real activity before deciding whether to join.
+
+    Paginated, and batched rather than per-group: the previous version ran
+    four queries inside a loop over every public group, which on a few
+    hundred groups meant a four-figure query count per page load.
+    """
     user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Admins don't have a major/year and shouldn't be nagged to set one —
+    # this is a student-facing feature, so say so plainly instead of showing
+    # the "complete your profile" prompt.
+    if str(current_user.get("role", "")).lower().endswith("admin"):
+        return {
+            "profile_complete": False,
+            "not_applicable": True,
+            "reason": "Group recommendations are personalised to a student's major and year.",
+            "major": user.major,
+            "year_of_study": user.year_of_study,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "recommendations": [],
+        }
+
     if not (user.major and user.year_of_study):
         return {
             "profile_complete": False,
+            "not_applicable": False,
             "major": user.major,
             "year_of_study": user.year_of_study,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
             "recommendations": [],
         }
 
@@ -172,65 +213,102 @@ async def get_major_recommendations(db: Session = Depends(get_db),
     user_level = _YEAR_TO_LEVEL.get(user.year_of_study)
     now = datetime.utcnow()
 
-    results = []
-    # Every open group is shown here — not just groups whose intended_major
-    # exactly matches the user's. Relevance is instead expressed as a match
-    # percentage (see _major_match_pct) so the student can see the whole
-    # landscape of groups, ranked by how well each fits their major.
     groups = (db.query(Group)
                 .filter(Group.is_public == True,          # noqa: E712
                         Group.is_deleted == False)         # noqa: E712
                 .all())
+    if not include_joined:
+        groups = [g for g in groups if g.id not in joined_group_ids]
+
+    if not groups:
+        return {
+            "profile_complete": True,
+            "not_applicable": False,
+            "major": user.major,
+            "year_of_study": user.year_of_study,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "recommendations": [],
+        }
+
+    group_ids = [g.id for g in groups]
+
+    # ── Batched lookups: three queries total, regardless of group count ──
+
+    member_counts = dict(
+        db.query(GroupMembership.group_id, func.count(GroupMembership.id))
+          .filter(GroupMembership.group_id.in_(group_ids))
+          .group_by(GroupMembership.group_id)
+          .all()
+    )
+
+    courses_by_group: dict = {}
+    for gid, code in (db.query(GroupCourse.group_id, Course.course_code)
+                        .join(Course, GroupCourse.course_id == Course.id)
+                        .filter(GroupCourse.group_id.in_(group_ids))
+                        .all()):
+        courses_by_group.setdefault(gid, []).append(code)
+
+    sessions_by_group: dict = {}
+    for sess in (db.query(StudySession)
+                   .filter(StudySession.group_id.in_(group_ids),
+                           StudySession.is_cancelled == False,   # noqa: E712
+                           StudySession.is_deleted == False,     # noqa: E712
+                           StudySession.scheduled_at >= now)
+                   .order_by(StudySession.scheduled_at.asc())
+                   .all()):
+        # Two per group is all the card shows; skip the rest.
+        bucket = sessions_by_group.setdefault(sess.group_id, [])
+        if len(bucket) < 2:
+            bucket.append(sess)
+
+    results = []
     for group in groups:
-        already_joined = group.id in joined_group_ids
-
-        member_count = (db.query(GroupMembership)
-                          .filter(GroupMembership.group_id == group.id)
-                          .count())
-        course_rows = (db.query(Course)
-                         .join(GroupCourse, GroupCourse.course_id == Course.id)
-                         .filter(GroupCourse.group_id == group.id)
-                         .all())
-        course_codes = sorted(c.course_code for c in course_rows)
-        levels = {lvl for c in course_rows if (lvl := _course_level(c.course_code)) is not None}
+        course_codes = sorted(courses_by_group.get(group.id, []))
+        levels = {lvl for code in course_codes if (lvl := _course_level(code)) is not None}
         year_match = bool(user_level and user_level in levels)
-        match_pct = _major_match_pct(user.major, group.intended_major, year_match)
-
-        upcoming_sessions = (db.query(StudySession)
-                               .filter(StudySession.group_id == group.id,
-                                       StudySession.is_cancelled == False,   # noqa: E712
-                                       StudySession.scheduled_at >= now)
-                               .order_by(StudySession.scheduled_at.asc())
-                               .limit(2)
-                               .all())
 
         results.append({
             "group_id": str(group.id),
             "name": group.name,
             "description": group.description,
-            "member_count": member_count,
+            "member_count": member_counts.get(group.id, 0),
             "course_codes": course_codes,
             "year_match": year_match,
-            "match_pct": match_pct,
-            "already_joined": already_joined,
+            "match_pct": _major_match_pct(user.major, group.intended_major, year_match),
+            "already_joined": group.id in joined_group_ids,
             "upcoming_sessions": [
                 {
                     "id": str(s.id),
                     "title": s.title,
-                    "scheduled_at": s.scheduled_at.isoformat(),
+                    "scheduled_at": iso_utc(s.scheduled_at),
                     "location": s.location,
                 }
-                for s in upcoming_sessions
+                for s in sessions_by_group.get(group.id, [])
             ],
         })
 
-    # Highest major match first, then groups at the user's course level, then by size.
-    results.sort(key=lambda r: (-r["match_pct"], not r["year_match"], -r["member_count"], r["name"]))
+    # Highest major match first, then groups at the user's course level,
+    # then by size. Groups the user already belongs to sink to the bottom.
+    results.sort(key=lambda r: (
+        r["already_joined"],
+        -r["match_pct"],
+        not r["year_match"],
+        -r["member_count"],
+        r["name"],
+    ))
+
+    total = len(results)
     return {
         "profile_complete": True,
+        "not_applicable": False,
         "major": user.major,
         "year_of_study": user.year_of_study,
-        "recommendations": results,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "recommendations": results[offset:offset + limit],
     }
 
 

@@ -24,7 +24,7 @@ import sys
 sys.path.append("/shared")
 from shared_models import (
     Group, GroupMembership, GroupMembershipRole, GroupCourse, Course,
-    User, UserEnrollment, Recommendation, Base
+    User, UserEnrollment, Recommendation, StudySession, ModerationLog, Base
 )
 from shared_database import SessionLocal, engine, get_db
 from shared_auth import get_current_user
@@ -68,6 +68,22 @@ def _get_group_or_404(db: Session, group_id: UUID):
             detail="Group not found"
         )
     return group
+
+
+def _invalidate_recommendations(db: Session, user_ids) -> None:
+    """Drop cached ML recommendation rows for the given users.
+
+    Membership changes alter which groups are candidates, so precomputed
+    scores go stale immediately. Deleting them makes the recommendations
+    endpoint fall back to live course-overlap scoring until the next ETL
+    run rewrites the table. Caller commits.
+    """
+    ids = [uid for uid in (user_ids or []) if uid]
+    if not ids:
+        return
+    db.query(Recommendation).filter(
+        Recommendation.user_id.in_(ids)
+    ).delete(synchronize_session=False)
 
 
 def _get_membership(db: Session, group_id: UUID, user_id):
@@ -200,10 +216,7 @@ async def create_group(
             .distinct()
             .all()
         )]
-        if affected_user_ids:
-            db.query(Recommendation).filter(
-                Recommendation.user_id.in_(affected_user_ids)
-            ).delete(synchronize_session=False)
+        _invalidate_recommendations(db, affected_user_ids)
     
     db.commit()
     db.refresh(new_group)
@@ -328,10 +341,7 @@ async def update_group(
             .distinct()
             .all()
         )]
-        if affected_user_ids:
-            db.query(Recommendation).filter(
-                Recommendation.user_id.in_(affected_user_ids)
-            ).delete(synchronize_session=False)
+        _invalidate_recommendations(db, affected_user_ids)
     
     db.commit()
     db.refresh(group)
@@ -362,12 +372,46 @@ async def delete_group(
 
     # Keep historical records with group foreign keys intact while removing the
     # group from every active StudySync view.
+    now = datetime.utcnow()
     group.is_deleted = True
-    group.deleted_at = datetime.utcnow()
+    group.deleted_at = now
     group.deleted_by = current_user["user_id"]
+
+    # Cascade the soft-delete to the group's sessions. Without this the
+    # sessions stay live: they keep appearing in "upcoming" feeds and
+    # recommendation cards for a group nobody can open.
+    db.query(StudySession).filter(
+        StudySession.group_id == group_id,
+        StudySession.is_deleted == False,       # noqa: E712
+    ).update(
+        {
+            StudySession.is_deleted: True,
+            StudySession.deleted_at: now,
+            StudySession.deleted_by: current_user["user_id"],
+        },
+        synchronize_session=False,
+    )
+
     db.query(Recommendation).filter(Recommendation.group_id == group_id).delete(
         synchronize_session=False
     )
+
+    # Record it in the same audit trail admins use, so a leader deleting
+    # their own group is visible in the moderation console and can be
+    # restored from there.
+    is_admin = str(current_user.get("role", "")).lower().endswith("admin")
+    db.add(ModerationLog(
+        id=uuid4(),
+        admin_id=current_user["user_id"],
+        entity_type="group",
+        entity_id=str(group_id),
+        action="delete",
+        reason=None,
+        target_title=group.name,
+        actor_role="admin" if is_admin else "leader",
+        created_at=now,
+    ))
+
     db.commit()
     
     return {"status": "deleted"}
@@ -379,15 +423,23 @@ async def join_group(
     current_user = Depends(get_current_user)
 ):
     """
-    Join a group as a member.
+    Join a public group as a member.
+
+    Uses _get_group_or_404 rather than a bare id lookup so that groups an
+    admin has moderated (is_deleted) are unjoinable — previously this
+    endpoint was the one place that skipped that check, which meant a
+    soft-deleted group could still be joined by anyone holding its id.
     """
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
+    group = _get_group_or_404(db, group_id)
+
+    # Private groups are not open-join. They're only reachable by id, so
+    # without this check "private" meant nothing more than "unlisted".
+    if not group.is_public:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This group is private. Ask a group leader for an invite."
         )
-    
+
     # Check if already member
     existing = db.query(GroupMembership).filter(
         GroupMembership.user_id == current_user["user_id"],
@@ -407,6 +459,12 @@ async def join_group(
         role=GroupMembershipRole.MEMBER
     )
     db.add(membership)
+
+    # Joining changes this user's candidate set, so any cached ML scores for
+    # them are now stale. Clearing them makes the recommendations endpoint
+    # fall back to live overlap until the next ETL run.
+    _invalidate_recommendations(db, [current_user["user_id"]])
+
     db.commit()
     
     return {"status": "joined"}
@@ -439,6 +497,11 @@ async def leave_group(
         )
     
     db.delete(membership)
+
+    # Leaving puts this group back in play for the user, so cached scores
+    # (which were computed while they were a member) are stale.
+    _invalidate_recommendations(db, [current_user["user_id"]])
+
     db.commit()
     
     return {"status": "left"}

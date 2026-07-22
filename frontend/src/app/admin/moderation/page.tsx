@@ -12,7 +12,8 @@ import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
 import {
-  useModerationGroups, useModerationResources, useModerationAnnouncements, useModerationAuditLog,
+  useModerationGroups, useModerationResources, useModerationAnnouncements,
+  useModerationSessions, useModerationAuditLog,
 } from "@/lib/hooks";
 
 const T = {
@@ -26,11 +27,12 @@ const T = {
   red:    "var(--ss-red)",
 } as const;
 
-type Tab = "groups" | "resources" | "announcements" | "audit";
+type Tab = "groups" | "resources" | "announcements" | "sessions" | "audit";
 const TABS: { id: Tab; label: string }[] = [
   { id: "groups",        label: "Groups" },
   { id: "resources",     label: "Resources" },
   { id: "announcements", label: "Announcements" },
+  { id: "sessions",      label: "Sessions" },
   { id: "audit",         label: "Audit Log" },
 ];
 
@@ -49,7 +51,7 @@ const th: CSSProperties = {
 const td: CSSProperties = { fontSize: 13, color: T.text, padding: "10px 12px", borderBottom: `1px solid ${T.border}`, verticalAlign: "top" };
 
 // entity singular used by the DELETE endpoint
-type Entity = "group" | "resource" | "announcement";
+type Entity = "group" | "resource" | "announcement" | "session";
 interface DeleteTarget { entity: Entity; id: string; title: string; }
 
 export default function ModerationConsolePage() {
@@ -57,9 +59,15 @@ export default function ModerationConsolePage() {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("groups");
 
-  const groups = useModerationGroups();
-  const resources = useModerationResources();
-  const announcements = useModerationAnnouncements();
+  // Toggles the listings between live content and the soft-deleted archive.
+  // Restoring is driven from the archive view rather than inferred from the
+  // audit log, so items stay reachable however old the deletion is.
+  const [showDeleted, setShowDeleted] = useState(false);
+
+  const groups = useModerationGroups(showDeleted);
+  const resources = useModerationResources(showDeleted);
+  const announcements = useModerationAnnouncements(showDeleted);
+  const sessions = useModerationSessions(showDeleted);
   const audit = useModerationAuditLog();
 
   const [target, setTarget] = useState<DeleteTarget | null>(null);
@@ -79,6 +87,7 @@ export default function ModerationConsolePage() {
   function refetchFor(entity: Entity) {
     if (entity === "group") groups.refetch();
     else if (entity === "resource") resources.refetch();
+    else if (entity === "session") sessions.refetch();
     else announcements.refetch();
   }
 
@@ -107,10 +116,11 @@ export default function ModerationConsolePage() {
 
   if (!ready) return null; // avoid flashing the console before the guard runs
 
-  // Current state per entity: the newest audit action wins (list is newest-first).
-  // A "delete" that is still the latest action can be reverted.
+  // Audit log is paginated, so it is history only — never the source of truth
+  // for "is this still deleted?". That now comes from the archive listings.
+  const auditLogs = audit.data?.logs ?? [];
   const latestAction: Record<string, string> = {};
-  for (const l of audit.data ?? []) {
+  for (const l of auditLogs) {
     if (!(l.entity_id in latestAction)) latestAction[l.entity_id] = l.action;
   }
 
@@ -120,6 +130,19 @@ export default function ModerationConsolePage() {
     color: active ? T.red : T.text2,
     borderBottom: `2px solid ${active ? T.red : "transparent"}`, marginBottom: -1,
   });
+
+  const restoreBtn = (entity: Entity, id: string) => (
+    <button
+      onClick={() => revert(entity, id)}
+      style={{
+        padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+        border: `1px solid ${T.border}`, background: "transparent", color: T.text,
+        cursor: "pointer", whiteSpace: "nowrap",
+      }}
+    >
+      ↩ Restore
+    </button>
+  );
 
   const deleteBtn = (t: DeleteTarget) => (
     <button
@@ -164,8 +187,27 @@ export default function ModerationConsolePage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.border}`, marginBottom: 20 }}>
-          {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={chip(tab === t.id)}>{t.label}</button>)}
+        <div style={{
+          display: "flex", gap: 4, alignItems: "center", justifyContent: "space-between",
+          borderBottom: `1px solid ${T.border}`, marginBottom: 20,
+        }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={chip(tab === t.id)}>{t.label}</button>)}
+          </div>
+          {tab !== "audit" && (
+            <label style={{
+              display: "flex", alignItems: "center", gap: 7, fontSize: 12,
+              color: T.text2, cursor: "pointer", paddingBottom: 8,
+            }}>
+              <input
+                type="checkbox"
+                checked={showDeleted}
+                onChange={(e) => setShowDeleted(e.target.checked)}
+                style={{ cursor: "pointer" }}
+              />
+              Show deleted
+            </label>
+          )}
         </div>
 
         {tab === "groups" && (
@@ -176,7 +218,11 @@ export default function ModerationConsolePage() {
                 <td style={td}>{g.creator_name}</td>
                 <td style={td}>{g.member_count}</td>
                 <td style={{ ...td, color: T.text2 }}>{fmt(g.created_at)}</td>
-                <td style={{ ...td, textAlign: "right" }}>{deleteBtn({ entity: "group", id: g.id, title: g.name })}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {g.is_deleted
+                    ? restoreBtn("group", g.id)
+                    : deleteBtn({ entity: "group", id: g.id, title: g.name })}
+                </td>
               </tr>
             ))}
           </Table>
@@ -190,7 +236,11 @@ export default function ModerationConsolePage() {
                 <td style={td}>{r.uploader_name}</td>
                 <td style={td}>{r.group_name}</td>
                 <td style={{ ...td, color: T.text2 }}>{fmt(r.created_at)}</td>
-                <td style={{ ...td, textAlign: "right" }}>{deleteBtn({ entity: "resource", id: r.id, title: r.file_name })}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {r.is_deleted
+                    ? restoreBtn("resource", r.id)
+                    : deleteBtn({ entity: "resource", id: r.id, title: r.file_name })}
+                </td>
               </tr>
             ))}
           </Table>
@@ -204,19 +254,59 @@ export default function ModerationConsolePage() {
                 <td style={td}>{a.author_name}</td>
                 <td style={td}>{a.group_name}</td>
                 <td style={{ ...td, color: T.text2 }}>{fmt(a.created_at)}</td>
-                <td style={{ ...td, textAlign: "right" }}>{deleteBtn({ entity: "announcement", id: a.id, title: a.title })}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {a.is_deleted
+                    ? restoreBtn("announcement", a.id)
+                    : deleteBtn({ entity: "announcement", id: a.id, title: a.title })}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        )}
+
+        {tab === "sessions" && (
+          <Table head={["Title", "Group", "Scheduled", "Created by", ""]} loading={sessions.loading} empty={(sessions.data ?? []).length === 0}>
+            {(sessions.data ?? []).map((s2) => (
+              <tr key={s2.id}>
+                <td style={td}>
+                  <span style={{ fontWeight: 600, textDecoration: s2.is_cancelled ? "line-through" : "none" }}>
+                    {s2.title}
+                  </span>
+                  {s2.is_cancelled && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: T.text2 }}>cancelled</span>
+                  )}
+                </td>
+                <td style={td}>{s2.group_name}</td>
+                <td style={{ ...td, color: T.text2, whiteSpace: "nowrap" }}>{fmt(s2.scheduled_at)}</td>
+                <td style={td}>{s2.creator_name}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {s2.is_deleted
+                    ? restoreBtn("session", s2.id)
+                    : deleteBtn({ entity: "session", id: s2.id, title: s2.title })}
+                </td>
               </tr>
             ))}
           </Table>
         )}
 
         {tab === "audit" && (
-          <Table head={["Admin", "Action", "Type", "Target", "Reason", "When", ""]} loading={audit.loading} empty={(audit.data ?? []).length === 0}>
-            {(audit.data ?? []).map((l) => {
+          <Table head={["Actor", "Action", "Type", "Target", "Reason", "When", ""]} loading={audit.loading} empty={auditLogs.length === 0}>
+            {auditLogs.map((l) => {
               const revertable = l.action === "delete" && latestAction[l.entity_id] === "delete";
               return (
                 <tr key={l.id}>
-                  <td style={td}>{l.admin_name}</td>
+                  <td style={td}>
+                    {l.admin_name}
+                    {l.actor_role && l.actor_role !== "admin" && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "1px 7px",
+                        borderRadius: 20, background: T.bg3, color: T.text2,
+                        textTransform: "capitalize",
+                      }}>
+                        {l.actor_role}
+                      </span>
+                    )}
+                  </td>
                   <td style={td}>
                     <span style={{ textTransform: "capitalize", fontWeight: 600, color: l.action === "restore" ? "var(--ss-green)" : T.text }}>
                       {l.action}
