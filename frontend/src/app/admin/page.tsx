@@ -16,7 +16,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function token() {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("token") || "";
+  return localStorage.getItem("ss_token") || "";
 }
 
 function authHeaders() {
