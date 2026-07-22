@@ -128,6 +128,10 @@ class GroupUpdate(BaseModel):
     description: Optional[str] = None
     is_public: Optional[bool] = None
     intended_major: Optional[str] = None
+    course_ids: Optional[List[UUID]] = None
+
+class GroupOwnershipTransfer(BaseModel):
+    new_owner_id: UUID
 
 class GroupResponse(GroupBase):
     id: UUID
@@ -140,6 +144,7 @@ class GroupResponse(GroupBase):
 class GroupDetailResponse(GroupResponse):
     member_count: int = 0
     course_codes: List[str] = []
+    courses: List[CourseResponse] = []
 
 # ============================================================================
 # Group Membership Schemas

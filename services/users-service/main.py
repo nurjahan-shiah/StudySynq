@@ -22,7 +22,7 @@ import httpx
 # Import shared utilities
 import sys
 sys.path.append("/shared")
-from shared_models import User, Course, UserEnrollment, Base
+from shared_models import User, Course, UserEnrollment, Recommendation, Base
 from shared_database import SessionLocal, engine, get_db
 from shared_auth import get_current_user
 from shared_schemas import (
@@ -336,9 +336,51 @@ async def enroll_in_course(
         course_id=course_id
     )
     db.add(enrollment)
+    # Course changes make any precomputed recommendation scores stale. Remove
+    # them so the recommendations service uses its live fallback until ETL
+    # computes a fresh set.
+    db.query(Recommendation).filter(Recommendation.user_id == user_id).delete(
+        synchronize_session=False
+    )
     db.commit()
     
     return {"status": "enrolled", "course_code": course.course_code}
+
+
+@app.delete("/users/{user_id}/enrollments")
+async def unenroll_from_course(
+    user_id: UUID,
+    course_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Unenroll a user from a course they are currently taking."""
+    if str(current_user["user_id"]) != str(user_id) and current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot unenroll another user"
+        )
+
+    enrollment = db.query(UserEnrollment).filter(
+        UserEnrollment.user_id == user_id,
+        UserEnrollment.course_id == course_id
+    ).first()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User is not enrolled in this course"
+        )
+
+    course = db.query(Course).filter(Course.id == course_id).first()
+    course_code = course.course_code if course else str(course_id)
+
+    db.delete(enrollment)
+    db.query(Recommendation).filter(Recommendation.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
+    return {"status": "unenrolled", "course_code": course_code}
 
 if __name__ == "__main__":
     import uvicorn

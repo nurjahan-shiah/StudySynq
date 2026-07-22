@@ -32,6 +32,7 @@ export interface GroupDetail {
   created_at: string;
   member_count: number;
   course_codes: string[];
+  courses?: Course[];
 }
 
 export interface GroupMember {
@@ -459,7 +460,13 @@ export const summarizeSession = (sessionId: string, notes: string) =>
   );
 // US-G.1 @author: Uzma Alam
 export const explainRecommendation = (groupId: string) =>
-  apiClient.get<{ group_id: string; group_name: string; score: number; explanation: string }>(
+  apiClient.get<{
+    group_id: string;
+    group_name: string;
+    score: number;
+    shared_courses: string[];
+    explanation: string;
+  }>(
     `/recommendations/${groupId}/explain`
   );
 // US-G.3 @author: Uzma Alam

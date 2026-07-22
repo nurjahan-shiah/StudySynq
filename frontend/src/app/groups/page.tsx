@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
-import { useMyGroups, explainRecommendation, type MyGroup } from "@/lib/hooks";
+import { useMyGroups, explainRecommendation, type Course, type MyGroup } from "@/lib/hooks";
 import { MAJOR_GROUPS } from "@/lib/majors";
 
 const T = {
@@ -106,17 +106,63 @@ export default function GroupsPage() {
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
   const [intendedMajor, setIntendedMajor] = useState("");
+  const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadCourses() {
+      setCoursesLoading(true);
+      const res = await apiClient.get<Course[]>("/courses");
+      setAvailableCourses(res.data ?? []);
+      setCoursesLoading(false);
+    }
+    loadCourses();
+  }, []);
+
+  function toggleCourse(courseId: string) {
+    setSelectedCourseIds((current) => {
+      const next = new Set(current);
+      if (next.has(courseId)) next.delete(courseId);
+      else next.add(courseId);
+      return next;
+    });
+    setFormError(null);
+  }
+
+  function resetForm() {
+    setCreating(false);
+    setName("");
+    setDescription("");
+    setIsPublic(true);
+    setIntendedMajor("");
+    setSelectedCourseIds(new Set());
+    setFormError(null);
+  }
 
   async function createGroup() {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setFormError("Enter a group name.");
+      return;
+    }
+    if (selectedCourseIds.size === 0) {
+      setFormError("Select at least one course for this group.");
+      return;
+    }
     setSaving(true);
+    setFormError(null);
     const res = await apiClient.post<{ id: string }>("/groups", {
-      name, description, is_public: isPublic, course_ids: [],
+      name: name.trim(), description, is_public: isPublic,
+      course_ids: Array.from(selectedCourseIds),
       intended_major: intendedMajor || null,
     });
     setSaving(false);
-    setCreating(false);
-    setName(""); setDescription(""); setIsPublic(true); setIntendedMajor("");
+    if (res.error) {
+      setFormError(res.error);
+      return;
+    }
+    resetForm();
     // Creator becomes the group leader — drop them straight into the new group.
     if (res.data?.id) router.push(`/groups/${res.data.id}`);
     else refetch();
@@ -177,6 +223,45 @@ export default function GroupsPage() {
             />
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 6 }}>
+                Courses <span style={{ color: T.red }}>*</span>
+              </label>
+              <div style={{
+                maxHeight: 150, overflowY: "auto", padding: 8, borderRadius: 8,
+                border: `1px solid ${T.border}`, background: T.bg3,
+              }}>
+                {coursesLoading ? (
+                  <p style={{ fontSize: 12, color: T.text2, margin: 4 }}>Loading courses…</p>
+                ) : availableCourses.length === 0 ? (
+                  <p style={{ fontSize: 12, color: T.text2, margin: 4 }}>
+                    No courses are available. Ask an admin to create one first.
+                  </p>
+                ) : availableCourses.map((course) => (
+                  <label
+                    key={course.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 4px", fontSize: 12.5, color: T.text,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCourseIds.has(course.id)}
+                      onChange={() => toggleCourse(course.id)}
+                    />
+                    <strong>{course.course_code}</strong>
+                    <span style={{ color: T.text2 }}>{course.course_name}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedCourseIds.size > 0 && (
+                <p style={{ fontSize: 11, color: T.text2, margin: "5px 0 0" }}>
+                  {selectedCourseIds.size} course{selectedCourseIds.size === 1 ? "" : "s"} selected
+                </p>
+              )}
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 6 }}>
                 Intended major <span style={{ fontWeight: 400 }}>(optional)</span>
               </label>
               <select
@@ -197,6 +282,11 @@ export default function GroupsPage() {
                 ))}
               </select>
             </div>
+            {formError && (
+              <p role="alert" style={{ fontSize: 12, color: T.red, margin: "0 0 10px" }}>
+                {formError}
+              </p>
+            )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: T.text2, cursor: "pointer" }}>
                 <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
@@ -204,8 +294,8 @@ export default function GroupsPage() {
               </label>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  onClick={() => { setCreating(false); setName(""); setDescription(""); }}
-                  disabled={saving}
+                  onClick={resetForm}
+                  disabled={saving || coursesLoading || availableCourses.length === 0}
                   style={{
                     padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
                     border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",

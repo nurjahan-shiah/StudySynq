@@ -75,7 +75,7 @@ function WelcomeModal({ name, role, onContinue }: { name: string; role: Role; on
         </p>
         <p style={{ color: "var(--text2)", fontSize: "0.82rem", marginBottom: 28 }}>{roleInfo.desc}</p>
         <button onClick={onContinue} className="ss-btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
-          Go to Dashboard
+          {role === "admin" ? "Go to Admin Console" : "Go to Dashboard"}
         </button>
       </div>
     </div>
@@ -251,7 +251,7 @@ export default function SignupPage() {
 
   function goToDashboard() {
     setShowSuggestions(false);
-    router.push("/dashboard");
+    router.push(registeredRole === "admin" ? "/admin" : "/dashboard");
   }
 
   async function handleEnrollSelected() {
@@ -281,7 +281,7 @@ export default function SignupPage() {
             if (registeredRole === "student" && program && year) {
               setShowSuggestions(true);
             } else {
-              router.push("/dashboard");
+              goToDashboard();
             }
           }}
         />

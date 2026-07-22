@@ -29,7 +29,10 @@ import sys
 
 sys.path.append("/shared")
 
-from shared_models import User, Course, Group, Resource, Announcement, GroupMembership, Base
+from shared_models import (
+    User, Course, Group, Resource, Announcement, GroupMembership,
+    GroupCourse, UserEnrollment, Recommendation, Base
+)
 from shared_database import engine, get_db
 from shared_auth import require_admin as require_admin_user
 from shared_schemas import CourseCreate, CourseResponse
@@ -746,6 +749,17 @@ async def admin_delete_course(
         f"Deleted {course.course_code}"
     )
 
+    # Remove dependent links first. The foreign-key columns are non-nullable,
+    # so deleting the course directly would otherwise make SQLAlchemy attempt
+    # to set them to NULL and produce a 500 response.
+    db.query(GroupCourse).filter(GroupCourse.course_id == course.id).delete(
+        synchronize_session=False
+    )
+    db.query(UserEnrollment).filter(UserEnrollment.course_id == course.id).delete(
+        synchronize_session=False
+    )
+    # Course removal changes recommendation inputs platform-wide.
+    db.query(Recommendation).delete(synchronize_session=False)
     db.delete(course)
     db.commit()
 

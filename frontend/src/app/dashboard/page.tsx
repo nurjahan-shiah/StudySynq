@@ -123,6 +123,46 @@ function StatCard({
   );
 }
 
+function AdminQuickAction({
+  icon, title, description, onClick,
+}: { icon: string; title: string; description: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 14, width: "100%",
+        padding: "15px 16px", textAlign: "left", cursor: "pointer",
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
+        color: T.text, transition: "border-color .15s, transform .15s, box-shadow .15s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = T.red;
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "var(--shadow)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = T.border;
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
+      <span style={{
+        width: 40, height: 40, flexShrink: 0, borderRadius: 11,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: `${T.red}1a`, color: T.red, fontSize: 17,
+      }}>
+        {icon}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{title}</span>
+        <span style={{ display: "block", fontSize: 11.5, color: T.text2 }}>{description}</span>
+      </span>
+      <span aria-hidden="true" style={{ color: T.red, fontSize: 16 }}>→</span>
+    </button>
+  );
+}
+
 // ── Group card ────────────────────────────────────────────────────────────
 
 function GroupCard({
@@ -223,7 +263,7 @@ function SessionRow({
 function RecommendationRow({
   name, score, courseCodes,
 }: { name: string; score: number; courseCodes?: string[] }) {
-  const pct = Math.round(score * 100);
+  const pct = Math.max(0, Math.min(100, Math.round(score <= 1 ? score * 100 : score)));
   const color = pct >= 80 ? T.green : pct >= 50 ? T.yellow : T.text2;
   return (
     <div style={{ padding: "10px 4px", borderBottom: `1px solid ${T.border}` }}>
@@ -304,10 +344,12 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [userName, setUserName] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setUserId(localStorage.getItem("ss_user_id") ?? "");
     setUserName(localStorage.getItem("ss_user_name") ?? "");
+    setIsAdmin(localStorage.getItem("ss_user_role") === "admin");
   }, []);
 
   const { data: groups, loading: groupsLoading } = useMyGroups(userId);
@@ -392,6 +434,40 @@ export default function DashboardPage() {
             <StatCard label="Recommended"       value={recsLoading ? "—" : recs.length}                 icon="✦" color={T.yellow} delay={80} />
             <StatCard label="Task progress"     value={tasksLoading ? "—" : `${taskProgress}%`}         icon="✓" color={T.red} delay={120} />
           </div>
+
+          {isAdmin && (
+            <section style={{ marginBottom: 26 }}>
+              <SectionHeader title="Admin actions" />
+              <div style={{
+                display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14,
+              }}>
+                <AdminQuickAction
+                  icon="⚙"
+                  title="Manage courses"
+                  description="Create, search, export, and remove catalogue courses."
+                  onClick={() => router.push("/admin")}
+                />
+                <AdminQuickAction
+                  icon="◉"
+                  title="System health"
+                  description="Review service availability and response times."
+                  onClick={() => router.push("/admin/health")}
+                />
+                <AdminQuickAction
+                  icon="◔"
+                  title="Analytics"
+                  description="Review platform activity, engagement, and group insights."
+                  onClick={() => router.push("/admin/analytics")}
+                />
+                <AdminQuickAction
+                  icon="⚑"
+                  title="Moderation"
+                  description="Review and manage reported or inappropriate content."
+                  onClick={() => router.push("/admin/moderation")}
+                />
+              </div>
+            </section>
+          )}
 
           {/* ── Main grid ── */}
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, marginBottom: 18 }}>

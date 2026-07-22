@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { apiClient } from "@/lib/apiClient";
-import { joinGroup } from "@/lib/hooks";
+import { explainRecommendation, joinGroup } from "@/lib/hooks";
 
 const T = {
   bg:     "var(--bg)",
@@ -100,6 +100,9 @@ function RecommendationCard({
 }: { rec: RecommendationRow; onJoined: (groupId: string) => void }) {
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [explaining, setExplaining] = useState(false);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
   const router = useRouter();
   const pct = toPercent(rec.score);
   const color = matchColor(pct);
@@ -112,6 +115,25 @@ function RecommendationCard({
       setJoined(true);
       onJoined(rec.group_id);
     }
+  }
+
+  async function handleExplain() {
+    if (explanation) {
+      setExplanation(null);
+      return;
+    }
+
+    setExplaining(true);
+    setExplanationError(null);
+    const res = await explainRecommendation(rec.group_id);
+    setExplaining(false);
+
+    if (res.error || !res.data?.explanation) {
+      setExplanationError("We couldn't load the match details right now.");
+      return;
+    }
+
+    setExplanation(res.data.explanation);
   }
 
   return (
@@ -128,9 +150,31 @@ function RecommendationCard({
         }}>
           {matchLabel(pct)}
         </span>
-        <p style={{ fontSize: 12, color: T.text2, margin: "8px 0 0" }}>
-          Based on overlapping courses and activity with other members.
-        </p>
+        <button
+          type="button"
+          onClick={handleExplain}
+          disabled={explaining}
+          aria-expanded={Boolean(explanation)}
+          style={{
+            display: "block", margin: "8px 0 0", padding: 0, border: "none",
+            background: "transparent", color: T.blue, fontSize: 12,
+            fontWeight: 700, cursor: explaining ? "wait" : "pointer",
+          }}
+        >
+          {explaining ? "Finding shared courses…" : explanation ? "Hide why" : "Why this group?"}
+        </button>
+        {(explanation || explanationError) && (
+          <p
+            role={explanationError ? "alert" : undefined}
+            style={{
+              fontSize: 12, lineHeight: 1.5,
+              color: explanationError ? T.red : T.text2,
+              margin: "7px 0 0", maxWidth: 430,
+            }}
+          >
+            {explanationError ?? explanation}
+          </p>
+        )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>

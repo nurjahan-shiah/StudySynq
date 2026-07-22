@@ -82,6 +82,18 @@ const NAV: {
 // US-F.2 / US-F.6 — admin-only entries, appended to NAV when the user is an admin
 const ADMIN_NAV = [
   {
+    id: 'admin',
+    label: 'Admin course management',
+    icon: '⚙',
+    path: '/admin',
+  },
+  {
+    id: 'health',
+    label: 'System health',
+    icon: '◉',
+    path: '/admin/health',
+  },
+  {
     id: 'analytics',
     label: 'Analytics',
     icon: '◔',
@@ -394,9 +406,9 @@ export function Sidebar() {
 
   const activeId =
     nav.find((item) =>
-      item.path !== '/dashboard'
-        ? pathname.startsWith(item.path)
-        : pathname === item.path,
+      item.path === '/dashboard' || item.path === '/admin'
+        ? pathname === item.path
+        : pathname.startsWith(item.path),
     )?.id ?? 'dashboard';
 
   return (

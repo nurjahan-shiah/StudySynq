@@ -84,7 +84,7 @@ export default function LoginPage() {
 
       localStorage.setItem('ss_user_name', loginData.user_email.split('@')[0]);
 
-      router.replace('/dashboard');
+      router.replace(loginData.user_role === 'admin' ? '/admin' : '/dashboard');
     } catch {
       setError('Could not connect to the server. Please try again.');
 

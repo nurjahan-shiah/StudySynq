@@ -169,3 +169,61 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 .ss-modal-anim { animation: ss-slide-up 0.25s ease; }
+
+/* Admin dashboard uses the same responsive shell and tokens as student pages. */
+.ss-admin-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ss-admin-toolbar input,
+.ss-admin-toolbar select {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ss-admin-toolbar input:focus,
+.ss-admin-toolbar select:focus {
+  border-color: var(--ss-red) !important;
+  box-shadow: 0 0 0 3px rgba(214, 48, 49, 0.15);
+}
+
+@media (max-width: 900px) {
+  .ss-admin-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ss-admin-header {
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .ss-admin-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .ss-admin-main {
+    padding: 22px 16px !important;
+  }
+
+  .ss-admin-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ss-admin-toolbar {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .ss-admin-toolbar input,
+  .ss-admin-toolbar select,
+  .ss-admin-toolbar button {
+    width: 100%;
+  }
+
+  .ss-admin-modal {
+    padding: 22px !important;
+  }
+}

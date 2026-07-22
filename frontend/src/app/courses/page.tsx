@@ -8,6 +8,7 @@
  *   GET  /courses                       — full course catalogue (courses-service)
  *   GET  /users/:id/enrollments          — courses the logged-in user is enrolled in
  *   POST /users/:id/enrollments?course_id=  — enroll self in a course
+ *   DELETE /users/:id/enrollments?course_id= — unenroll self from a course
  */
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -49,12 +50,13 @@ function Empty({ icon, msg }: { icon: string; msg: string }) {
 }
 
 function CourseCard({
-  course, enrolled, busy, onEnroll,
+  course, enrolled, busy, onEnroll, onUnenroll,
 }: {
   course: Course;
   enrolled: boolean;
   busy: boolean;
   onEnroll: (c: Course) => void;
+  onUnenroll: (c: Course) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -94,7 +96,7 @@ function CourseCard({
       </p>
       <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>{course.department}</p>
 
-      {!enrolled && (
+      {!enrolled ? (
         <button
           onClick={() => onEnroll(course)}
           disabled={busy}
@@ -107,6 +109,20 @@ function CourseCard({
           }}
         >
           {busy ? "Enrolling…" : "+ Enroll"}
+        </button>
+      ) : (
+        <button
+          onClick={() => onUnenroll(course)}
+          disabled={busy}
+          style={{
+            marginTop: 4, padding: "7px 0", borderRadius: 8,
+            border: `1px solid ${T.border}`, background: "transparent",
+            color: T.red, fontSize: 12, fontWeight: 600,
+            cursor: busy ? "default" : "pointer",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy ? "Unenrolling…" : "Unenroll"}
         </button>
       )}
     </div>
@@ -125,7 +141,7 @@ export default function CoursesPage() {
   const [deptFilter, setDeptFilter] = useState("all");
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [loadingAll, setLoadingAll] = useState(true);
-  const [enrollingId, setEnrollingId] = useState<string | null>(null);
+  const [courseActionId, setCourseActionId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   useEffect(() => {
@@ -172,13 +188,28 @@ export default function CoursesPage() {
 
   async function handleEnroll(course: Course) {
     if (!userId) return;
-    setEnrollingId(course.id);
+    setCourseActionId(course.id);
     const res = await apiClient.post(`/users/${userId}/enrollments?course_id=${course.id}`, {});
-    setEnrollingId(null);
+    setCourseActionId(null);
     if (res.error) {
       showToast(res.error, false);
     } else {
       showToast(`Enrolled in ${course.course_code}`);
+      refetchEnrolled();
+    }
+  }
+
+  async function handleUnenroll(course: Course) {
+    if (!userId) return;
+    setCourseActionId(course.id);
+    const res = await apiClient.delete<{ status: string; course_code: string }>(
+      `/users/${userId}/enrollments?course_id=${course.id}`
+    );
+    setCourseActionId(null);
+    if (res.error) {
+      showToast(res.error, false);
+    } else {
+      showToast(`Unenrolled from ${course.course_code}`);
       refetchEnrolled();
     }
   }
@@ -286,7 +317,14 @@ export default function CoursesPage() {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
               {(enrolled ?? []).map((c) => (
-                <CourseCard key={c.id} course={c} enrolled busy={false} onEnroll={() => {}} />
+                <CourseCard
+                  key={c.id}
+                  course={c}
+                  enrolled
+                  busy={courseActionId === c.id}
+                  onEnroll={handleEnroll}
+                  onUnenroll={handleUnenroll}
+                />
               ))}
             </div>
           )
@@ -299,8 +337,9 @@ export default function CoursesPage() {
                 key={c.id}
                 course={c}
                 enrolled={enrolledIds.has(c.id)}
-                busy={enrollingId === c.id}
+                busy={courseActionId === c.id}
                 onEnroll={handleEnroll}
+                onUnenroll={handleUnenroll}
               />
             ))}
           </div>
