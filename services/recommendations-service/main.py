@@ -36,13 +36,77 @@ app = FastAPI(title="StudySynq Recommendations Service", version="1.0.0", lifesp
 async def health():
     return {"status": "ok", "service": "recommendations-service"}
 
+def _enrich_groups(db: Session, groups, user_course_ids: set) -> dict:
+    """Batch-load the display data every recommendation card needs.
+
+    Three queries total regardless of how many groups are being shown, rather
+    than four per group. Returns {group_id: {...}}.
+    """
+    if not groups:
+        return {}
+
+    group_ids = [g.id for g in groups]
+
+    member_counts = dict(
+        db.query(GroupMembership.group_id, func.count(GroupMembership.id))
+          .filter(GroupMembership.group_id.in_(group_ids))
+          .group_by(GroupMembership.group_id)
+          .all()
+    )
+
+    courses_by_group: dict = {}
+    for gid, cid, code in (db.query(GroupCourse.group_id, Course.id, Course.course_code)
+                             .join(Course, GroupCourse.course_id == Course.id)
+                             .filter(GroupCourse.group_id.in_(group_ids))
+                             .all()):
+        courses_by_group.setdefault(gid, []).append((cid, code))
+
+    now = datetime.utcnow()
+    next_session_by_group: dict = {}
+    for sess in (db.query(StudySession)
+                   .filter(StudySession.group_id.in_(group_ids),
+                           StudySession.is_cancelled == False,   # noqa: E712
+                           StudySession.is_deleted == False,     # noqa: E712
+                           StudySession.scheduled_at >= now)
+                   .order_by(StudySession.scheduled_at.asc())
+                   .all()):
+        next_session_by_group.setdefault(sess.group_id, sess)
+
+    out = {}
+    for g in groups:
+        pairs = courses_by_group.get(g.id, [])
+        all_codes = sorted(code for _, code in pairs)
+        # Courses the student is actually enrolled in — the concrete reason
+        # this group was surfaced, so the card can show it instead of only a
+        # percentage.
+        shared_codes = sorted(code for cid, code in pairs if cid in user_course_ids)
+        nxt = next_session_by_group.get(g.id)
+        out[g.id] = {
+            "description": g.description,
+            "member_count": member_counts.get(g.id, 0),
+            "course_codes": all_codes,
+            "shared_courses": shared_codes,
+            "next_session": {
+                "id": str(nxt.id),
+                "title": nxt.title,
+                "scheduled_at": iso_utc(nxt.scheduled_at),
+                "location": nxt.location,
+            } if nxt else None,
+        }
+    return out
+
+
 @app.get("/recommendations")
-async def get_recommendations(db: Session = Depends(get_db),
+async def get_recommendations(limit: int = Query(10, ge=1, le=50),
+                              db: Session = Depends(get_db),
                               current_user: dict = Depends(get_current_user)):
     """
     Return ranked group recommendations for the current user.
     If the ML pipeline has written scores, use them. Otherwise fall back to a
     simple live course-overlap computation so the endpoint always returns data.
+
+    Each row carries the context the card renders: shared courses, member
+    count, and the group's next session.
     """
     user_id = current_user["user_id"]
     joined_group_ids = {
@@ -51,6 +115,17 @@ async def get_recommendations(db: Session = Depends(get_db),
             GroupMembership.user_id == user_id
         ).all()
     }
+    user_courses = {e.course_id for e in
+                    db.query(UserEnrollment).filter(UserEnrollment.user_id == user_id).all()}
+
+    def _eligible(group) -> bool:
+        return bool(
+            group
+            and group.id not in joined_group_ids
+            and str(group.created_by) != str(user_id)
+            and group.is_public
+            and not group.is_deleted
+        )
 
     # 1. Try precomputed recommendations first
     recs = (db.query(Recommendation)
@@ -58,49 +133,54 @@ async def get_recommendations(db: Session = Depends(get_db),
               .order_by(Recommendation.score.desc())
               .all())
     if recs:
-        results = []
+        rec_group_ids = [r.group_id for r in recs]
+        groups_by_id = {
+            g.id: g for g in
+            db.query(Group).filter(Group.id.in_(rec_group_ids)).all()
+        }
+        picked, scores = [], {}
         for r in recs:
-            group = db.query(Group).filter(Group.id == r.group_id).first()
-            if (
-                group
-                and group.id not in joined_group_ids
-                and str(group.created_by) != str(user_id)
-                and group.is_public
-                and not group.is_deleted
-            ):
-                results.append({
-                    "group_id": str(group.id),
-                    "name": group.name,
-                    "score": r.score,
-                })
-                if len(results) == 10:
+            group = groups_by_id.get(r.group_id)
+            if _eligible(group):
+                picked.append(group)
+                scores[group.id] = r.score
+                if len(picked) == limit:
                     break
+
+        extra = _enrich_groups(db, picked, user_courses)
+        results = [
+            {"group_id": str(g.id), "name": g.name, "score": scores[g.id], **extra[g.id]}
+            for g in picked
+        ]
         return {"recommendations": results, "source": "ml_pipeline"}
 
     # 2. Fallback: live course-overlap scoring
-    user_courses = {e.course_id for e in
-                    db.query(UserEnrollment).filter(UserEnrollment.user_id == user_id).all()}
     if not user_courses:
         return {"recommendations": [], "source": "fallback"}
 
+    candidates = [
+        g for g in db.query(Group).filter(
+            Group.is_public == True,      # noqa: E712
+            Group.is_deleted == False,    # noqa: E712
+        ).all()
+        if _eligible(g)
+    ]
+    if not candidates:
+        return {"recommendations": [], "source": "fallback"}
+
+    extra = _enrich_groups(db, candidates, user_courses)
     scored = []
-    for group in db.query(Group).filter(
-        Group.is_public == True,
-        Group.is_deleted == False
-    ).all():
-        if group.id in joined_group_ids or str(group.created_by) == str(user_id):
-            continue
-        group_courses = {gc.course_id for gc in
-                         db.query(GroupCourse).filter(GroupCourse.group_id == group.id).all()}
-        overlap = len(user_courses & group_courses)
+    for group in candidates:
+        overlap = len(extra[group.id]["shared_courses"])
         if overlap > 0:
             scored.append({
                 "group_id": str(group.id),
                 "name": group.name,
                 "score": min(overlap * 50, 100),
+                **extra[group.id],
             })
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return {"recommendations": scored[:10], "source": "fallback"}
+    scored.sort(key=lambda x: (-x["score"], -x["member_count"], x["name"]))
+    return {"recommendations": scored[:limit], "source": "fallback"}
 
 
 # ── Recommended tab: groups matching the user's major (view only) ────────────
