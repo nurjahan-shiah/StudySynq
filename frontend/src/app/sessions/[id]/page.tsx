@@ -254,6 +254,42 @@ function SummarizeModal({ sessionId, onClose }: {
   );
 }
 
+function CancelConfirmModal({ onClose, onConfirm, cancelling }: {
+  onClose: () => void;
+  onConfirm: () => void;
+  cancelling: boolean;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 420, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>Cancel Session</h2>
+        <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.6 }}>
+          Are you sure you want to cancel this session? Attendees will be notified and RSVPs will be disabled.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={cancelling} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2,
+            cursor: cancelling ? "not-allowed" : "pointer",
+          }}>Keep Session</button>
+          <button onClick={onConfirm} disabled={cancelling} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: cancelling ? "not-allowed" : "pointer", opacity: cancelling ? 0.7 : 1,
+          }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SessionDetailPage() {
@@ -270,6 +306,7 @@ export default function SessionDetailPage() {
   const [showEdit, setShowEdit]     = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -303,12 +340,11 @@ export default function SessionDetailPage() {
 
   // US-C.4 @author: Uzma Alam
   async function handleCancel() {
-    if (!confirm("Are you sure you want to cancel this session?")) return;
     setCancelling(true);
     setCancelError(null);
     const res = await cancelSession(sessionId);
     if (res.error) { setCancelError(res.error); }
-    else           { refetch(); }
+    else           { refetch(); setShowCancelConfirm(false); }
     setCancelling(false);
   }
 
@@ -407,7 +443,7 @@ export default function SessionDetailPage() {
                           border: `1px solid ${T.border}`, background: "transparent",
                           color: T.text2, cursor: "pointer",
                         }}>Edit</button>
-                        <button onClick={handleCancel} disabled={cancelling} style={{
+                        <button onClick={() => setShowCancelConfirm(true)} disabled={cancelling} style={{
                           padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                           border: `1px solid ${T.red}`, background: "transparent",
                           color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
@@ -529,6 +565,14 @@ export default function SessionDetailPage() {
           <SummarizeModal
             sessionId={sessionId}
             onClose={() => setShowSummarize(false)}
+          />
+        )}
+
+        {showCancelConfirm && (
+          <CancelConfirmModal
+            cancelling={cancelling}
+            onClose={() => setShowCancelConfirm(false)}
+            onConfirm={handleCancel}
           />
         )}
       </main>
