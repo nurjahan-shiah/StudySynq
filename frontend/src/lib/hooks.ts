@@ -419,7 +419,7 @@ export interface AnalyticsCourse {
   group_count: number; session_count: number; resource_count: number; member_count: number;
 }
 export interface AnalyticsGroup {
-  name: string; member_count: number; session_count: number; resource_count: number;
+  id: string; name: string; member_count: number; session_count: number; resource_count: number;
 }
 export interface AnalyticsActivity {
   type: string; title: string; created_at: string | null;

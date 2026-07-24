@@ -353,6 +353,7 @@ async def analytics_overview(
 
     most_active_groups = [
         {
+            "id": str(r["id"]),
             "name": r["name"],
             "member_count": int(r["member_count"]),
             "session_count": int(r["session_count"]),
@@ -360,7 +361,7 @@ async def analytics_overview(
         }
         for r in db.execute(text(
             "SELECT * FROM ("
-            "  SELECT g.name,"
+            "  SELECT g.id, g.name,"
             "    (SELECT COUNT(*) FROM group_memberships gm WHERE gm.group_id = g.id) AS member_count,"
             "    (SELECT COUNT(*) FROM study_sessions s WHERE s.group_id = g.id) AS session_count,"
             "    (SELECT COUNT(*) FROM resources r WHERE r.group_id = g.id AND r.is_deleted = FALSE) AS resource_count"

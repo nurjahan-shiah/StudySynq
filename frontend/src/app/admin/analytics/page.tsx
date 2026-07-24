@@ -130,10 +130,18 @@ export default function AnalyticsPage() {
                       <thead><tr>{["Course", "Groups", "Sessions", "Resources", "Members"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                       <tbody>
                         {courses.map((c) => (
-                          <tr key={c.course_code}>
+                          <tr
+                            key={c.course_code}
+                            onClick={() => router.push("/courses")}
+                            title="Open the course catalogue"
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg3)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
                             <td style={td}>
                               <span style={{ fontWeight: 600 }}>{c.course_code}</span>
                               <span style={{ color: T.text2, marginLeft: 6, fontSize: 11 }}>{c.course_name}</span>
+                              <span style={{ color: T.text2, marginLeft: 6, fontSize: 11 }}>↗</span>
                             </td>
                             <td style={td}>{c.group_count}</td>
                             <td style={td}>{c.session_count} <Bar value={c.session_count} max={courseMax} /></td>
@@ -155,9 +163,16 @@ export default function AnalyticsPage() {
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Group", "Members", "Sessions", "Resources"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                       <tbody>
-                        {groups.map((g, i) => (
-                          <tr key={`${g.name}-${i}`}>
-                            <td style={{ ...td, fontWeight: 600 }}>{g.name}</td>
+                        {groups.map((g) => (
+                          <tr
+                            key={g.id}
+                            onClick={() => router.push(`/groups/${g.id}`)}
+                            title="Open this group"
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg3)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <td style={{ ...td, fontWeight: 600 }}>{g.name}<span style={{ color: T.text2, marginLeft: 6, fontSize: 11, fontWeight: 400 }}>↗</span></td>
                             <td style={td}>{g.member_count}</td>
                             <td style={td}>{g.session_count} <Bar value={g.session_count + g.resource_count} max={groupMax} /></td>
                             <td style={td}>{g.resource_count}</td>
