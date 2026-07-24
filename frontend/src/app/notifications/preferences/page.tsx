@@ -33,6 +33,7 @@ const CATEGORIES: { key: PrefKey; label: string; hint: string }[] = [
   { key: "tasks",          label: "Assigned tasks",     hint: "When a leader assigns a task to you" },
   { key: "resources",      label: "Resource uploads",   hint: "When a file is shared in your group" },
   { key: "group_activity", label: "Group activity",     hint: "Other group updates" },
+  { key: "social",         label: "Campus feed",        hint: "Comments on your posts and friend requests" },
 ];
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {

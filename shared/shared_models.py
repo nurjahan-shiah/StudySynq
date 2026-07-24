@@ -32,6 +32,7 @@ class NotificationType(str, enum.Enum):
     TASK = "task"
     RESOURCE = "resource"
     GROUP_ACTIVITY = "group_activity"
+    SOCIAL = "social"
     SYSTEM = "system"
 
 # ============================================================================

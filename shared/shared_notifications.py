@@ -37,13 +37,14 @@ from shared_models import Notification, GroupMembership, NotificationPreference
 
 # Preference categories and their default on/off state (used when a user has no
 # stored row for that category).
-PREFERENCE_CATEGORIES = ["sessions", "announcements", "tasks", "resources", "group_activity"]
+PREFERENCE_CATEGORIES = ["sessions", "announcements", "tasks", "resources", "group_activity", "social"]
 DEFAULT_PREFERENCES = {
     "sessions": True,
     "announcements": True,
     "tasks": True,
     "resources": True,
     "group_activity": False,
+    "social": True,
 }
 
 # Map a notification `type` (singular, as created by the services) to its
@@ -54,6 +55,7 @@ _TYPE_TO_CATEGORY = {
     "task": "tasks",
     "resource": "resources",
     "group_activity": "group_activity",
+    "social": "social",
 }
 
 

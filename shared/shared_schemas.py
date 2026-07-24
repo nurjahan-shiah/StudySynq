@@ -489,6 +489,7 @@ class NotificationPreferencesResponse(BaseModel):
     tasks: bool
     resources: bool
     group_activity: bool
+    social: bool
 
 class NotificationPreferencesUpdate(BaseModel):
     sessions: Optional[bool] = None
@@ -496,6 +497,7 @@ class NotificationPreferencesUpdate(BaseModel):
     tasks: Optional[bool] = None
     resources: Optional[bool] = None
     group_activity: Optional[bool] = None
+    social: Optional[bool] = None
 
 class TaskResponse(BaseModel):
     id: UUID

@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPE_META: Record<
   task:           { label: "Task",         icon: "✓", color: "var(--ss-green)" },
   resource:       { label: "Resource",     icon: "⊟", color: "var(--ss-red)" },
   group_activity: { label: "Group",        icon: "⚇", color: "var(--ss-blue)" },
+  social:         { label: "Campus feed",  icon: "◈", color: "var(--ss-yellow)" },
   system:         { label: "System",       icon: "⚙", color: "var(--text2)" },
 };
 

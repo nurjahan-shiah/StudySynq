@@ -282,7 +282,7 @@ async def create_comment(
         create_notification(
             db,
             user_id=post.author_id,
-            type="system",
+            type="social",
             title="New comment on your post",
             message=f"{author.name if author else 'Someone'} commented: {body.content[:80]}",
             link="/dashboard",
@@ -433,7 +433,7 @@ async def send_friend_request(
     create_notification(
         db,
         user_id=user_id,
-        type="system",
+        type="social",
         title="New friend request",
         message=f"{sender.name if sender else 'Someone'} sent you a friend request.",
         link="/dashboard",
@@ -470,7 +470,7 @@ async def accept_friend_request(
     create_notification(
         db,
         user_id=user_id,
-        type="system",
+        type="social",
         title="Friend request accepted",
         message=f"{accepter.name if accepter else 'Someone'} accepted your friend request.",
         link="/dashboard",
