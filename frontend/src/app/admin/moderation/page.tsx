@@ -73,6 +73,9 @@ export default function ModerationConsolePage() {
   const [target, setTarget] = useState<DeleteTarget | null>(null);
   const [reason, setReason] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // In-tab confirm: the row whose Revert/Restore button is currently morphed
+  // into a "Confirm" button (only one at a time). No browser dialog.
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
   // Admin route guard.
   useEffect(() => {
@@ -106,7 +109,7 @@ export default function ModerationConsolePage() {
   }
 
   async function revert(entity: Entity, id: string) {
-    if (!confirm(`Restore this ${entity}? It will become visible again.`)) return;
+    setConfirmKey(null);
     const res = await apiClient.post(`/admin/moderation/${entity}/${id}/restore`, {});
     if (!res.error) {
       refetchFor(entity);
@@ -131,18 +134,28 @@ export default function ModerationConsolePage() {
     borderBottom: `2px solid ${active ? T.red : "transparent"}`, marginBottom: -1,
   });
 
-  const restoreBtn = (entity: Entity, id: string) => (
-    <button
-      onClick={() => revert(entity, id)}
-      style={{
-        padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-        border: `1px solid ${T.border}`, background: "transparent", color: T.text,
-        cursor: "pointer", whiteSpace: "nowrap",
-      }}
-    >
-      ↩ Restore
-    </button>
-  );
+  // A Revert/Restore button that morphs in place into a red "Confirm" on first
+  // click, and performs the restore on the second — no browser confirm dialog.
+  const morphRevertButton = (key: string, entity: Entity, id: string, label: string) => {
+    const confirming = confirmKey === key;
+    return (
+      <button
+        onClick={() => (confirming ? revert(entity, id) : setConfirmKey(key))}
+        style={{
+          padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+          border: `1px solid ${confirming ? T.red : T.border}`,
+          background: confirming ? T.red : "transparent",
+          color: confirming ? "#fff" : T.text,
+          cursor: "pointer", whiteSpace: "nowrap",
+        }}
+      >
+        {confirming ? "Confirm" : label}
+      </button>
+    );
+  };
+
+  const restoreBtn = (entity: Entity, id: string) =>
+    morphRevertButton(`content:${entity}:${id}`, entity, id, "↩ Restore");
 
   const deleteBtn = (t: DeleteTarget) => (
     <button
@@ -192,7 +205,7 @@ export default function ModerationConsolePage() {
           borderBottom: `1px solid ${T.border}`, marginBottom: 20,
         }}>
           <div style={{ display: "flex", gap: 4 }}>
-            {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={chip(tab === t.id)}>{t.label}</button>)}
+            {TABS.map((t) => <button key={t.id} onClick={() => { setTab(t.id); setConfirmKey(null); }} style={chip(tab === t.id)}>{t.label}</button>)}
           </div>
           {tab !== "audit" && (
             <label style={{
@@ -317,18 +330,7 @@ export default function ModerationConsolePage() {
                   <td style={{ ...td, color: T.text2 }}>{l.reason || "—"}</td>
                   <td style={{ ...td, color: T.text2, whiteSpace: "nowrap" }}>{fmt(l.created_at)}</td>
                   <td style={{ ...td, textAlign: "right" }}>
-                    {revertable && (
-                      <button
-                        onClick={() => revert(l.entity_type as Entity, l.entity_id)}
-                        style={{
-                          padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-                          border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        ↩ Revert
-                      </button>
-                    )}
+                    {revertable && morphRevertButton(`audit:${l.id}`, l.entity_type as Entity, l.entity_id, "↩ Revert")}
                   </td>
                 </tr>
               );
