@@ -385,7 +385,7 @@ export default function Home() {
   ];
 
   const stats = [
-    { end: 10+, suffix: "+", label: "Active students" },
+    { end: 10, suffix: "+", label: "Active students" },
     { end: 5, suffix: "+", label: "Study groups" },
     { end: 98, suffix: "%", label: "Satisfaction rate" },
     { end: 4.5, suffix: "/5", label: "Average rating" },
