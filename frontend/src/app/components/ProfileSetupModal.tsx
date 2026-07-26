@@ -71,13 +71,15 @@ function FieldRow({
 }
 
 export function ProfileSetupModal({
-  userId, onClose, onSaved,
-}: { userId: string; onClose: () => void; onSaved?: () => void }) {
+  userId, role, onClose, onSaved,
+}: { userId: string; role?: string; onClose: () => void; onSaved?: () => void }) {
+  const isAdmin = role === "admin";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [saved, setSaved]     = useState(false);
 
+  const [name, setName]   = useState("");
   const [major, setMajor] = useState("");
   const [year, setYear]   = useState("");
   const [bio, setBio]     = useState("");
@@ -94,6 +96,7 @@ export function ProfileSetupModal({
       const res = await getMyProfile(userId);
       if (cancelled) return;
       if (res.data) {
+        setName(res.data.name ?? "");
         setMajor(res.data.major ?? "");
         setYear(res.data.year_of_study ?? "");
         setBio(res.data.bio ?? "");
@@ -107,9 +110,12 @@ export function ProfileSetupModal({
   async function handleSave() {
     setSaving(true);
     setError(null);
-    const res = await updateMyProfile(userId, {
-      major, year_of_study: year, bio, profile_privacy: privacy,
-    });
+    const res = await updateMyProfile(
+      userId,
+      isAdmin
+        ? { name }
+        : { major, year_of_study: year, bio, profile_privacy: privacy }
+    );
     setSaving(false);
     if (res.error) { setError(res.error); return; }
     setSaved(true);
@@ -117,7 +123,7 @@ export function ProfileSetupModal({
     setTimeout(onClose, 900);
   }
 
-  const complete = Boolean(major && year);
+  const complete = isAdmin ? Boolean(name.trim()) : Boolean(major && year);
 
   return (
     <>
@@ -133,19 +139,36 @@ export function ProfileSetupModal({
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: T.text, margin: 0 }}>
-            Complete your profile
+            {isAdmin ? "Edit admin profile" : complete ? "Edit your profile" : "Complete your profile"}
           </h2>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: T.text2 }}>✕</button>
         </div>
         <p style={{ fontSize: 12, color: T.text2, margin: "0 0 18px", lineHeight: 1.5 }}>
-          Your major and year power your recommendations. Use the toggles to decide
-          what other students can see on your profile card.
+          {isAdmin
+            ? "Keep the administrator name shown throughout StudySynq up to date."
+            : "Your major and year power your recommendations. Use the toggles to decide what other students can see on your profile card."}
         </p>
 
         {loading ? (
           <p style={{ fontSize: 13, color: T.text2 }}>Loading…</p>
         ) : (
           <>
+            {isAdmin ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6 }}>
+                  Full name
+                </label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="ss-input"
+                  style={{ width: "100%" }}
+                  maxLength={100}
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <>
             <FieldRow
               label="Year of study"
               privacy={privacy.year_of_study}
@@ -197,6 +220,8 @@ export function ProfileSetupModal({
                 Controls whether other students can see your email on your profile card.
               </p>
             </FieldRow>
+              </>
+            )}
 
             {error && <p style={{ fontSize: 12, color: T.red, margin: "0 0 10px" }}>{error}</p>}
 
@@ -206,7 +231,7 @@ export function ProfileSetupModal({
               </span>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !complete}
                 className="ss-btn-primary"
                 style={{ padding: "9px 22px", fontSize: 13, opacity: saving ? 0.7 : 1 }}
               >

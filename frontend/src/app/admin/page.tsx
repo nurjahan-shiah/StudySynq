@@ -50,6 +50,8 @@ interface AdminUser {
   email: string;
   role: string;
   is_active: boolean;
+  deactivation_reason: string | null;
+  deactivated_until: string | null;
   created_at: string;
 }
 
@@ -129,6 +131,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [deactivationTarget, setDeactivationTarget] = useState<AdminUser | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState("");
+  const [deactivationPeriod, setDeactivationPeriod] = useState<"30" | "60" | "permanent">("30");
+  const [deactivating, setDeactivating] = useState(false);
 
   // Course create/edit modal state
   const [showCourseModal, setShowCourseModal] = useState(false);
@@ -212,18 +218,49 @@ export default function AdminDashboard() {
   // ── user actions ──────────────────────────────────────────────────────────
 
   async function toggleActive(u: AdminUser) {
-    const endpoint = u.is_active ? "deactivate" : "reactivate";
-    const r = await fetch(`${API}/admin/users/${u.id}/${endpoint}`, {
+    if (u.is_active) {
+      setDeactivationTarget(u);
+      setDeactivationReason("");
+      setDeactivationPeriod("30");
+      return;
+    }
+
+    const r = await fetch(`${API}/admin/users/${u.id}/reactivate`, {
       method: "POST",
       headers: authHeaders(),
     });
     if (r.ok) {
-      showToast(`${u.name} ${u.is_active ? "deactivated" : "reactivated"}`);
+      showToast(`${u.name}'s profile was activated`);
       fetchUsers();
       fetchSummary();
     } else {
       const err = await r.json();
       showToast(err.detail ?? "Failed", false);
+    }
+  }
+
+  async function confirmDeactivation() {
+    if (!deactivationTarget || deactivationReason.trim().length < 3) return;
+    setDeactivating(true);
+    const r = await fetch(`${API}/admin/users/${deactivationTarget.id}/deactivate`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        reason: deactivationReason.trim(),
+        period_days: deactivationPeriod === "permanent" ? null : Number(deactivationPeriod),
+      }),
+    });
+    setDeactivating(false);
+
+    if (r.ok) {
+      const name = deactivationTarget.name;
+      setDeactivationTarget(null);
+      showToast(`${name}'s profile was deactivated successfully`);
+      fetchUsers();
+      fetchSummary();
+    } else {
+      const err = await r.json();
+      showToast(err.detail ?? "Failed to deactivate profile", false);
     }
   }
 
@@ -554,7 +591,7 @@ export default function AdminDashboard() {
                             color: u.is_active ? "#b91c1c" : "#16a34a",
                           }}
                         >
-                          {u.is_active ? "Deactivate" : "Reactivate"}
+                          {u.is_active ? "Deactivate" : "Activate Profile"}
                         </button>
                       </td>
                     </tr>
@@ -720,6 +757,71 @@ export default function AdminDashboard() {
       </main>
 
       {/* ── Add course modal ── */}
+      {deactivationTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deactivate-user-title"
+          style={{
+            position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          }}
+        >
+          <div className="ss-modal-anim" style={{
+            width: 440, maxWidth: "100%", padding: 24, borderRadius: 14,
+            background: T.card, border: `1px solid ${T.border}`, boxShadow: "var(--shadow)",
+          }}>
+            <h2 id="deactivate-user-title" style={{ color: T.text, fontSize: 17, margin: "0 0 6px" }}>
+              Deactivate {deactivationTarget.name}&apos;s profile
+            </h2>
+            <p style={{ color: T.text2, fontSize: 12, lineHeight: 1.5, margin: "0 0 17px" }}>
+              The user will be unable to sign in until the selected period ends or an admin activates the profile.
+            </p>
+            <label style={{ display: "block", color: T.text, fontSize: 12, fontWeight: 700, marginBottom: 14 }}>
+              <span style={{ display: "block", marginBottom: 6 }}>Reason for deactivation</span>
+              <textarea
+                className="ss-input"
+                value={deactivationReason}
+                onChange={e => setDeactivationReason(e.target.value.slice(0, 500))}
+                rows={3}
+                placeholder="Enter the reason for this action"
+                style={{ width: "100%", resize: "vertical", fontFamily: "inherit" }}
+                autoFocus
+              />
+              <span style={{ display: "block", color: T.text2, fontSize: 10, fontWeight: 400, textAlign: "right", marginTop: 3 }}>
+                {deactivationReason.length}/500
+              </span>
+            </label>
+            <label style={{ display: "block", color: T.text, fontSize: 12, fontWeight: 700 }}>
+              <span style={{ display: "block", marginBottom: 6 }}>Deactivation period</span>
+              <select
+                className="ss-input"
+                value={deactivationPeriod}
+                onChange={e => setDeactivationPeriod(e.target.value as typeof deactivationPeriod)}
+                style={{ width: "100%" }}
+              >
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="permanent">Permanent</option>
+              </select>
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 20 }}>
+              <button className="ss-btn-ghost" onClick={() => setDeactivationTarget(null)} disabled={deactivating}>
+                Cancel
+              </button>
+              <button
+                className="ss-btn-primary"
+                onClick={confirmDeactivation}
+                disabled={deactivating || deactivationReason.trim().length < 3}
+                style={{ background: T.red, opacity: deactivating || deactivationReason.trim().length < 3 ? .6 : 1 }}
+              >
+                {deactivating ? "Deactivating…" : "Confirm deactivation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCourseModal && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,.4)",

@@ -11,6 +11,7 @@ Runs on port 8002
 
 from fastapi import FastAPI, HTTPException, status, Depends
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 from typing import List
 from uuid import UUID
 from contextlib import asynccontextmanager
@@ -24,10 +25,13 @@ import sys
 sys.path.append("/shared")
 from shared_models import User, Course, UserEnrollment, Recommendation, Base
 from shared_database import SessionLocal, engine, get_db, run_light_migrations
-from shared_auth import get_current_user
+from shared_auth import get_current_user, hash_password, verify_password
 from shared_schemas import (
     UserProfile,
     UserUpdate,
+    ChangeEmailRequest,
+    ChangePasswordRequest,
+    AccountDeactivationRequest,
     CourseResponse,
     OnboardingSuggestionRequest,
     OnboardingSuggestionResponse,
@@ -95,7 +99,13 @@ def _to_profile(user: User, *, include_private: bool) -> UserProfile:
         year_of_study=show("year_of_study", user.year_of_study),
         bio=show("bio", user.bio),
         profile_privacy=privacy if include_private else None,
-        profile_complete=bool(user.major and user.year_of_study),
+        profile_complete=(
+            (user.role.value if hasattr(user.role, "value") else str(user.role)) == "admin"
+            or bool(user.major and user.year_of_study)
+        ),
+        is_active=bool(user.is_active),
+        deactivation_reason=user.deactivation_reason if include_private else None,
+        deactivated_until=user.deactivated_until if include_private else None,
     )
 
 
@@ -145,8 +155,11 @@ async def update_user(
         )
     
     # Update fields if provided
-    if user_data.name:
-        user.name = user_data.name
+    if user_data.name is not None:
+        normalized_name = user_data.name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        user.name = normalized_name
     if user_data.email:
         # Check if email is already taken
         existing = db.query(User).filter(
@@ -175,6 +188,105 @@ async def update_user(
     db.commit()
     db.refresh(user)
 
+    return _to_profile(user, include_private=True)
+
+
+def _require_self_or_admin(user_id: UUID, current_user):
+    if str(current_user["user_id"]) != str(user_id) and current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot update another user's account"
+        )
+
+
+@app.post("/users/{user_id}/change-email", response_model=UserProfile)
+async def change_email(
+    user_id: UUID,
+    body: ChangeEmailRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, current_user)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    normalized_email = str(body.new_email).strip().lower()
+    existing = db.query(User).filter(
+        User.email.ilike(normalized_email),
+        User.id != user_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already in use")
+
+    user.email = normalized_email
+    db.commit()
+    db.refresh(user)
+    return _to_profile(user, include_private=True)
+
+
+@app.post("/users/{user_id}/change-password")
+async def change_password(
+    user_id: UUID,
+    body: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, current_user)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if verify_password(body.new_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="New password must be different")
+
+    user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    return {"status": "password_changed"}
+
+
+@app.post("/users/{user_id}/deactivate", response_model=UserProfile)
+async def deactivate_account(
+    user_id: UUID,
+    body: AccountDeactivationRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, current_user)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now = datetime.utcnow()
+    user.is_active = False
+    user.deactivation_reason = body.reason
+    user.deactivated_at = now
+    user.deactivated_until = now + timedelta(days=body.period_days) if body.period_days else None
+    db.commit()
+    db.refresh(user)
+    return _to_profile(user, include_private=True)
+
+
+@app.post("/users/{user_id}/reactivate", response_model=UserProfile)
+async def reactivate_account(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, current_user)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_active = True
+    user.deactivation_reason = None
+    user.deactivated_at = None
+    user.deactivated_until = None
+    db.commit()
+    db.refresh(user)
     return _to_profile(user, include_private=True)
 
 @app.post("/users/onboarding/suggest-courses", response_model=OnboardingSuggestionResponse)

@@ -44,7 +44,9 @@ class ApiClient {
 
     localStorage.setItem('ss_user_role', data.user_role);
 
-    localStorage.setItem('ss_user_name', data.user_email.split('@')[0]);
+    if (!localStorage.getItem('ss_user_name')) {
+      localStorage.setItem('ss_user_name', data.user_email.split('@')[0]);
+    }
   }
 
   private clearSession(): void {

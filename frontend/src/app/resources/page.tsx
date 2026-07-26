@@ -48,6 +48,15 @@ function isPDF(fileType: string): boolean {
   return fileType.toLowerCase().includes("pdf");
 }
 
+function isDocument(fileType: string): boolean {
+  return ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md"]
+    .includes(fileType.toLowerCase());
+}
+
+function isLink(fileType: string): boolean {
+  return fileType.toLowerCase() === "link";
+}
+
 // ── Stats Widget (US-D.5, leader-only) ───────────────────────────────────────
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -449,7 +458,8 @@ export default function ResourcesPage() {
   const [userRole, setUserRole] = useState("");
   const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "pdf" | "image" | "other">("all");
+  const [filterType, setFilterType] =
+    useState<"all" | "pdf" | "document" | "image" | "link" | "other">("all");
   // US-G.3 @author: Uzma Alam
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -528,8 +538,13 @@ export default function ResourcesPage() {
                         r.group_name.toLowerCase().includes(search.toLowerCase());
     if (!matchSearch) return false;
     if (filterType === "pdf")   return isPDF(r.file_type);
+    if (filterType === "document") return isDocument(r.file_type);
     if (filterType === "image") return isImage(r.file_type);
-    if (filterType === "other") return !isPDF(r.file_type) && !isImage(r.file_type);
+    if (filterType === "link") return isLink(r.file_type);
+    if (filterType === "other") {
+      return !isPDF(r.file_type) && !isDocument(r.file_type)
+        && !isImage(r.file_type) && !isLink(r.file_type);
+    }
     return true;
   });
 
@@ -598,9 +613,11 @@ export default function ResourcesPage() {
             }}
           />
           <div style={{ display: "flex", gap: 6 }}>
-            {(["all","pdf","image","other"] as const).map(t => (
+            {(["all", "pdf", "document", "image", "link", "other"] as const).map(t => (
               <button key={t} onClick={() => setFilterType(t)} style={chipStyle(filterType === t)}>
-                {t === "all" ? "All" : t === "pdf" ? "PDFs" : t === "image" ? "Images" : "Other"}
+                {t === "all" ? "All" : t === "pdf" ? "PDFs"
+                  : t === "document" ? "Documents" : t === "image" ? "Images"
+                    : t === "link" ? "Links" : "Other"}
               </button>
             ))}
           </div>

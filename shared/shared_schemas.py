@@ -105,6 +105,9 @@ class UserProfile(UserBase):
     profile_privacy: Optional[Dict[str, str]] = None
     # True once major + year are set; drives the Recommended tab gating.
     profile_complete: bool = False
+    is_active: bool = True
+    deactivation_reason: Optional[str] = None
+    deactivated_until: Optional[UTCDatetime] = None
 
 class PublicUserCard(BaseModel):
     """Privacy-filtered view of another user (social feed mini-profile)."""
@@ -145,6 +148,46 @@ class UserUpdate(BaseModel):
                 raise ValueError("Privacy values must be 'public' or 'private'")
             cleaned[k] = val
         return cleaned
+
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+    current_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one number")
+        return v
+
+class AccountDeactivationRequest(BaseModel):
+    reason: str
+    period_days: Optional[int] = None
+
+    @field_validator("reason")
+    @classmethod
+    def reason_required(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not (3 <= len(v) <= 500):
+            raise ValueError("Deactivation reason must be 3-500 characters")
+        return v
+
+    @field_validator("period_days")
+    @classmethod
+    def valid_period(cls, v):
+        if v not in (None, 30, 60):
+            raise ValueError("Deactivation period must be 30 days, 60 days, or permanent")
+        return v
 
 # ============================================================================
 # Course Schemas

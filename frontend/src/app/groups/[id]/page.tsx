@@ -16,6 +16,7 @@ import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
 import { GroupSessionsCalendar } from "@/app/components/GroupSessionsCalendar";
+import { GroupActivityFeed } from "@/app/components/GroupActivityFeed";
 
 const T = {
   bg:     "var(--bg)",
@@ -71,9 +72,10 @@ function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onCo
   );
 }
 
-type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
+type Tab = "overview" | "activity" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
+  { id: "activity",      label: "Activity" },
   { id: "announcements", label: "Announcements" },
   { id: "tasks",         label: "Tasks" },
   { id: "sessions",      label: "Sessions" },
@@ -386,6 +388,10 @@ export default function GroupDetailPage() {
               )}
             </section>
           </div>
+        )}
+
+        {tab === "activity" && (
+          <GroupActivityFeed groupId={groupId} />
         )}
 
         {tab === "announcements" && (
