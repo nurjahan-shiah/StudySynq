@@ -203,7 +203,7 @@ function ProductPreview() {
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 12 }}>
             <div style={{ background: "var(--bg3)", borderRadius: 10, padding: 14, border: "1px solid var(--border)" }}>
               <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>Upcoming sessions</div>
-              {["EECS 3101 — Graph Algos", "EECS 4314 — Capstone sync"].map(s => (
+              {["EECS 3101 - Graph Algos", "EECS 4314 - Capstone sync"].map(s => (
                 <div key={s} style={{
                   fontSize: "0.68rem", color: "var(--text2)", padding: "7px 0",
                   borderTop: "1px solid var(--border)",
@@ -381,14 +381,14 @@ export default function Home() {
   const testimonials = [
     { quote: "I went from cramming alone to actually having a group that shows up. My GPA noticed the difference.", name: "Amara O.", meta: "Computer Science, Y3", color: "var(--ss-blue)" },
     { quote: "The session planner is the only reason our capstone group ever agreed on a meeting time.", name: "Daniel K.", meta: "Software Engineering, Y4", color: "var(--ss-green)" },
-    { quote: "The recommendations are scarily good — it found me a resource I didn't know I needed for finals.", name: "Priya S.", meta: "Data Science, Y2", color: "var(--ss-red)" },
+    { quote: "The recommendations are scarily good - it found me a resource I didn't know I needed for finals.", name: "Priya S.", meta: "Data Science, Y2", color: "var(--ss-red)" },
   ];
 
   const stats = [
-    { end: 12000, suffix: "+", label: "Active students" },
-    { end: 850, suffix: "+", label: "Study groups" },
+    { end: 10+, suffix: "+", label: "Active students" },
+    { end: 5, suffix: "+", label: "Study groups" },
     { end: 98, suffix: "%", label: "Satisfaction rate" },
-    { end: 14, suffix: "", label: "Universities" },
+    { end: 4.5, suffix: "/5", label: "Average rating" },
   ];
 
   const plans = [
@@ -426,10 +426,10 @@ export default function Home() {
   ];
 
   const faqs = [
-    { q: "Is StudySynq really free for students?", a: "Yes. The Student plan is free forever — unlimited groups, sessions, and recommendations. Pro adds more storage and the AI power features." },
+    { q: "Is StudySynq really free for students?", a: "Yes. The Student plan is free forever - unlimited groups, sessions, and recommendations. Pro adds more storage and the AI power features." },
     { q: "How do the AI recommendations work?", a: "Your course enrollments and group activity flow into our analytics layer, where a similarity model scores every study group against your courses. You only ever see groups that genuinely overlap with what you're taking." },
     { q: "Who can see the files I upload?", a: "Only members of the group you upload to. Group leaders and platform admins can moderate content, and every moderation action is recorded in an audit log." },
-    { q: "Can my university adopt StudySynq officially?", a: "That's what the Institution plan is for — admin tooling, analytics, and roster integrations so a whole faculty can onboard in days, not months." },
+    { q: "Can my university adopt StudySynq officially?", a: "That's what the Institution plan is for - admin tooling, analytics, and roster integrations so a whole faculty can onboard in days, not months." },
   ];
 
   return (
@@ -556,7 +556,7 @@ export default function Home() {
           Everything you need to excel
         </h2>
         <p style={{ textAlign: "center", color: "var(--text2)", maxWidth: 480, margin: "0 auto 56px", lineHeight: 1.7 }}>
-          Tools designed for real students — not enterprise teams in suits.
+          Tools designed for real students - not enterprise teams in suits.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24, maxWidth: 1100, margin: "0 auto" }}>
@@ -607,7 +607,7 @@ export default function Home() {
           Free for students. Fair for everyone.
         </h2>
         <p style={{ textAlign: "center", color: "var(--text2)", maxWidth: 460, margin: "0 auto 60px", lineHeight: 1.7 }}>
-          Start free with your class today — upgrade only if you want the AI power features.
+          Start free with your class today - upgrade only if you want the AI power features.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 24, justifyContent: "center", alignItems: "stretch", maxWidth: 1100, margin: "0 auto" }}>
           {plans.map((pl, i) => (
