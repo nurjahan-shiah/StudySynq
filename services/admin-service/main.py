@@ -38,6 +38,7 @@ from shared_time import iso_utc
 from shared_database import engine, get_db
 from shared_auth import require_admin as require_admin_user
 from shared_schemas import CourseCreate, CourseResponse, CourseUpdate
+from shared_notifications import create_group_notifications
 
 
 # ============================================================================
@@ -1215,6 +1216,19 @@ async def moderation_delete(
         db, current_user["user_id"], entity, item_id, "delete", reason, target_title,
     )
     db.commit()
+
+    # Members otherwise lose the group with zero warning — mirrors the
+    # notification a leader-initiated deletion already sends.
+    if entity == "group":
+        try:
+            create_group_notifications(
+                db, group_id=item.id, type="system",
+                title="Group removed by an admin",
+                message=f'"{target_title}" was removed by a platform admin' + (f": {reason}" if reason else "."),
+                link="/groups",
+            )
+        except Exception as e:  # pragma: no cover - notifications are best-effort
+            print(f"[admin-service] group-deletion notification failed: {e}")
 
     return {"message": f"{entity.capitalize()} deleted successfully", "log_id": str(entry.id)}
 

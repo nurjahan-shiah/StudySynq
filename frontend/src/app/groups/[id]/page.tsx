@@ -27,6 +27,50 @@ const T = {
   red:    "var(--ss-red)",
 } as const;
 
+// In-app replacement for window.confirm() — matches the modal used for
+// session cancellation so destructive group actions get the same treatment.
+type PendingAction =
+  | { type: "remove"; memberId: string; memberName: string }
+  | { type: "transfer"; memberId: string; memberName: string }
+  | { type: "delete" };
+
+function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onConfirm }: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 420, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>{title}</h2>
+        <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.6 }}>{message}</p>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} disabled={busy} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}>Cancel</button>
+          <button onClick={onConfirm} disabled={busy} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1,
+          }}>{busy ? "Working…" : confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
@@ -57,6 +101,7 @@ export default function GroupDetailPage() {
   const [editSection, setEditSection] = useState("");
   const [savingGroup, setSavingGroup] = useState(false);
   const [groupAction, setGroupAction] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -109,8 +154,6 @@ export default function GroupDetailPage() {
       return;
     }
 
-    if (!confirm(`Remove ${memberName} from this group?`)) return;
-
     setMemberActionId(memberId);
     setMemberError("");
     setMemberStatus("");
@@ -125,6 +168,7 @@ export default function GroupDetailPage() {
       setMemberError(message);
     } finally {
       setMemberActionId("");
+      setPendingAction(null);
     }
   }
 
@@ -192,7 +236,7 @@ export default function GroupDetailPage() {
   }
 
   async function transferOwnership(memberId: string, memberName: string) {
-    if (!isOwner || !confirm(`Transfer ownership of this group to ${memberName}? You will remain a leader.`)) return;
+    if (!isOwner) return;
 
     setMemberActionId(memberId);
     setMemberError("");
@@ -201,6 +245,7 @@ export default function GroupDetailPage() {
       new_owner_id: memberId,
     });
     setMemberActionId("");
+    setPendingAction(null);
 
     if (res.error) {
       setMemberError(res.error);
@@ -212,7 +257,6 @@ export default function GroupDetailPage() {
 
   async function deleteCurrentGroup() {
     if (!isOwner || !group) return;
-    if (!confirm(`Delete “${group.name}”? Members will no longer be able to access this group.`)) return;
 
     setGroupAction("delete");
     setMemberError("");
@@ -220,6 +264,7 @@ export default function GroupDetailPage() {
     if (res.error) {
       setMemberError(res.error);
       setGroupAction("");
+      setPendingAction(null);
       return;
     }
     router.push("/groups");
@@ -455,7 +500,7 @@ export default function GroupDetailPage() {
 
                           {isOwner && (
                             <button
-                              onClick={() => transferOwnership(m.user_id, m.user_name)}
+                              onClick={() => setPendingAction({ type: "transfer", memberId: m.user_id, memberName: m.user_name })}
                               disabled={busy}
                               style={{
                                 padding: "5px 9px",
@@ -473,7 +518,7 @@ export default function GroupDetailPage() {
                           )}
 
                           <button
-                            onClick={() => removeGroupMember(m.user_id, m.user_name)}
+                            onClick={() => setPendingAction({ type: "remove", memberId: m.user_id, memberName: m.user_name })}
                             disabled={busy}
                             style={{
                               padding: "5px 9px",
@@ -603,7 +648,7 @@ export default function GroupDetailPage() {
                   Only the owner can delete this group. Members will no longer be able to access it.
                 </p>
                 <button
-                  onClick={deleteCurrentGroup}
+                  onClick={() => setPendingAction({ type: "delete" })}
                   disabled={groupAction === "delete"}
                   style={{
                     border: `1px solid ${T.red}`, borderRadius: 8, padding: "8px 14px",
@@ -619,6 +664,39 @@ export default function GroupDetailPage() {
         )}
 
       </main>
+
+      {pendingAction?.type === "remove" && (
+        <ConfirmActionModal
+          title="Remove member"
+          message={`Remove ${pendingAction.memberName} from this group?`}
+          confirmLabel="Remove"
+          busy={memberActionId === pendingAction.memberId}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => removeGroupMember(pendingAction.memberId, pendingAction.memberName)}
+        />
+      )}
+
+      {pendingAction?.type === "transfer" && (
+        <ConfirmActionModal
+          title="Transfer ownership"
+          message={`Transfer ownership of this group to ${pendingAction.memberName}? You will remain a leader.`}
+          confirmLabel="Transfer ownership"
+          busy={memberActionId === pendingAction.memberId}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => transferOwnership(pendingAction.memberId, pendingAction.memberName)}
+        />
+      )}
+
+      {pendingAction?.type === "delete" && group && (
+        <ConfirmActionModal
+          title="Delete group"
+          message={`Delete "${group.name}"? Members will no longer be able to access this group.`}
+          confirmLabel="Delete group"
+          busy={groupAction === "delete"}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={deleteCurrentGroup}
+        />
+      )}
     </div>
   );
 }

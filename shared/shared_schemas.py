@@ -370,6 +370,7 @@ class SessionRSVPResponse(BaseModel):
     user_id: UUID
     status: str
     created_at: UTCDatetime
+    user_name: str = ""
 
     class Config:
         from_attributes = True

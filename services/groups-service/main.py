@@ -444,7 +444,19 @@ async def delete_group(
     ))
 
     db.commit()
-    
+
+    # Members otherwise lose access with zero warning — notify everyone but the deleter.
+    remaining_members = (db.query(GroupMembership)
+                            .filter(GroupMembership.group_id == group_id)
+                            .all())
+    for m in remaining_members:
+        if str(m.user_id) == str(current_user["user_id"]):
+            continue
+        _notify_user(db, m.user_id, "system",
+                     title="Group deleted",
+                     message=f'"{group.name}" was deleted and is no longer accessible.',
+                     link="/groups")
+
     return {"status": "deleted"}
 
 @app.post("/groups/{group_id}/join")

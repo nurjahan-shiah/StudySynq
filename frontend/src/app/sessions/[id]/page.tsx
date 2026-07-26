@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { useSessionDetail, useGroup, rsvpSession, updateSession, cancelSession, summarizeSession, type SessionRSVP } from "@/lib/hooks";
+import { useSessionDetail, useGroup, useGroupMembers, rsvpSession, updateSession, cancelSession, summarizeSession, type SessionRSVP } from "@/lib/hooks";
 
 const T = {
   bg:     "var(--bg)",
@@ -45,6 +45,7 @@ const RSVP_COLORS: Record<RSVPStatus, string> = {
 function AttendeePill({ rsvp }: { rsvp: SessionRSVP }) {
   const status = rsvp.status as RSVPStatus;
   const color  = RSVP_COLORS[status] ?? T.text2;
+  const name   = rsvp.user_name || "Unknown";
 
   return (
     <div style={{
@@ -59,10 +60,10 @@ function AttendeePill({ rsvp }: { rsvp: SessionRSVP }) {
         alignItems: "center", justifyContent: "center",
         fontSize: 12, fontWeight: 700, flexShrink: 0,
       }}>
-        {rsvp.user_id.slice(0, 1).toUpperCase()}
+        {name.slice(0, 1).toUpperCase()}
       </div>
-      <span style={{ flex: 1, fontSize: 12, color: T.text2, fontFamily: "monospace" }}>
-        {rsvp.user_id.slice(0, 8)}…
+      <span style={{ flex: 1, fontSize: 12, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {name}
       </span>
       <span style={{
         fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
@@ -299,6 +300,7 @@ export default function SessionDetailPage() {
   const sessionId = params.id;
 
   const [userId, setUserId]         = useState("");
+  const [isAdmin, setIsAdmin]       = useState(false);
   const [myRSVP, setMyRSVP]         = useState<RSVPStatus | null>(null);
   const [submitting, setSubmitting]  = useState(false);
   const [rsvpError, setRsvpError]   = useState<string | null>(null);
@@ -312,10 +314,12 @@ export default function SessionDetailPage() {
     const id = localStorage.getItem("ss_user_id");
     if (!id) { router.push("/login"); return; }
     setUserId(id);
+    setIsAdmin(localStorage.getItem("ss_user_role") === "admin");
   }, [router]);
 
   const { data: session, loading, error, refetch } = useSessionDetail(sessionId);
   const { data: group } = useGroup(session?.group_id ?? "");
+  const { data: groupMembers } = useGroupMembers(session?.group_id ?? "");
 
   // Sync my current RSVP status once session loads
   useEffect(() => {
@@ -350,6 +354,8 @@ export default function SessionDetailPage() {
 
   const upcoming = session ? new Date(session.scheduled_at) >= new Date() : false;
   const isCreator = session?.created_by === userId;
+  const isGroupLeader = (groupMembers ?? []).some(m => m.user_id === userId && m.membership_role === "leader");
+  const canManageSession = isCreator || isGroupLeader || isAdmin;
   const cancelled = session?.is_cancelled ?? false;
 
   return (
@@ -434,7 +440,7 @@ export default function SessionDetailPage() {
                 </div>
 
                 {/* Edit / Cancel buttons — only make sense for sessions that haven't happened yet */}
-                {isCreator && !cancelled && (
+                {canManageSession && !cancelled && (
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                     {upcoming && (
                       <>

@@ -72,6 +72,7 @@ export interface SessionRSVP {
   user_id: string;
   status: "attending" | "not_attending" | "maybe";
   created_at: string;
+  user_name: string;
 }
 
 export interface StudySessionDetail extends StudySession {

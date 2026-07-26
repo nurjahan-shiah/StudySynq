@@ -43,6 +43,20 @@ def _get_live_session_or_404(db: Session, session_id: str) -> StudySession:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
+def _can_manage_session(db: Session, session: StudySession, current_user: dict) -> bool:
+    """Creator, group leaders, and admins can edit/cancel/delete a session —
+    not just whoever happened to create it, matching how the rest of the app
+    treats group leaders as full managers of their group's content."""
+    if str(session.created_by) == str(current_user["user_id"]):
+        return True
+    if current_user.get("role") == "admin":
+        return True
+    membership = (db.query(GroupMembership)
+                    .filter(GroupMembership.group_id == session.group_id,
+                            GroupMembership.user_id == current_user["user_id"])
+                    .first())
+    return bool(membership and membership.role == GroupMembershipRole.LEADER)
+
 async def lifespan(app: FastAPI):
     print("Sessions Service starting...")
     init_db()
@@ -136,9 +150,19 @@ async def get_session(session_id: str, db: Session = Depends(get_db),
     session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    attendees = db.query(SessionRSVP).filter(SessionRSVP.session_id == session_id).all()
+    attendee_rows = (db.query(SessionRSVP, User.name)
+                        .join(User, User.id == SessionRSVP.user_id)
+                        .filter(SessionRSVP.session_id == session_id)
+                        .all())
     result = StudySessionDetailResponse.model_validate(session)
-    result.attendees = [SessionRSVPResponse.model_validate(a) for a in attendees]
+    result.attendees = [
+        SessionRSVPResponse(
+            id=rsvp.id, session_id=rsvp.session_id, user_id=rsvp.user_id,
+            status=rsvp.status.value if hasattr(rsvp.status, "value") else rsvp.status,
+            created_at=rsvp.created_at, user_name=name or "Unknown",
+        )
+        for rsvp, name in attendee_rows
+    ]
     return result
 
 # US-C.5 @author: Fahad Sohail
@@ -175,10 +199,11 @@ async def rsvp_session(session_id: str, data: SessionRSVPCreate,
         db.refresh(rsvp)
         result = rsvp
 
+    actor = db.query(User).filter(User.id == current_user["user_id"]).first()
+
     # Notify the session's creator that someone RSVP'd (best-effort; skip self-RSVP).
     if str(session.created_by) != str(current_user["user_id"]):
         try:
-            actor = db.query(User).filter(User.id == current_user["user_id"]).first()
             create_notification(
                 db, user_id=session.created_by, type="session",
                 title="Session RSVP",
@@ -189,17 +214,21 @@ async def rsvp_session(session_id: str, data: SessionRSVPCreate,
         except Exception as e:  # pragma: no cover
             print(f"[sessions-service] rsvp notification failed: {e}")
 
-    return result
+    return SessionRSVPResponse(
+        id=result.id, session_id=result.session_id, user_id=result.user_id,
+        status=result.status.value if hasattr(result.status, "value") else result.status,
+        created_at=result.created_at, user_name=actor.name if actor else "Unknown",
+    )
 
 @app.put("/sessions/{session_id}", response_model=StudySessionResponse)
 async def update_session(session_id: str, data: StudySessionUpdate,
                          db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
-    """Update a session (creator or admin only)."""
+    """Update a session (creator, group leader, or admin)."""
     session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
+    if not _can_manage_session(db, session, current_user):
         raise HTTPException(status_code=403, detail="Not allowed to edit this session")
     # US-C.4 @author: Uzma Alam
     if session.is_cancelled:
@@ -231,11 +260,11 @@ async def update_session(session_id: str, data: StudySessionUpdate,
 @app.patch("/sessions/{session_id}/cancel", response_model=StudySessionResponse)
 async def cancel_session(session_id: str, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
-    """Cancel a session (creator or admin only)."""
+    """Cancel a session (creator, group leader, or admin)."""
     session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
+    if not _can_manage_session(db, session, current_user):
         raise HTTPException(status_code=403, detail="Not allowed to cancel this session")
     if session.is_cancelled:
         raise HTTPException(status_code=400, detail="Session is already cancelled")
@@ -316,11 +345,11 @@ Notes:
 @app.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(session_id: str, db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
-    """Delete a session (creator or admin only)."""
+    """Delete a session (creator, group leader, or admin)."""
     session = _live_sessions(db).filter(StudySession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if str(session.created_by) != str(current_user["user_id"]) and current_user.get("role") != "admin":
+    if not _can_manage_session(db, session, current_user):
         raise HTTPException(status_code=403, detail="Not allowed to delete this session")
     db.delete(session)
     db.commit()
