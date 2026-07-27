@@ -28,6 +28,9 @@ export interface FullProfile {
   bio: string | null;
   profile_privacy: ProfilePrivacy | null;
   profile_complete: boolean;
+  is_active: boolean;
+  deactivation_reason: string | null;
+  deactivated_until: string | null;
 }
 
 export const getMyProfile = (userId: string) =>
@@ -36,12 +39,31 @@ export const getMyProfile = (userId: string) =>
 export const updateMyProfile = (
   userId: string,
   data: {
+    name?: string;
     major?: string;
     year_of_study?: string;
     bio?: string;
     profile_privacy?: ProfilePrivacy;
   }
 ) => apiClient.put<FullProfile>(`/users/${userId}`, data);
+
+export const changeAccountEmail = (
+  userId: string,
+  data: { new_email: string; current_password: string }
+) => apiClient.post<FullProfile>(`/users/${userId}/change-email`, data);
+
+export const changeAccountPassword = (
+  userId: string,
+  data: { current_password: string; new_password: string }
+) => apiClient.post<{ status: string }>(`/users/${userId}/change-password`, data);
+
+export const deactivateAccount = (
+  userId: string,
+  data: { reason: string; period_days: 30 | 60 | null }
+) => apiClient.post<FullProfile>(`/users/${userId}/deactivate`, data);
+
+export const reactivateAccount = (userId: string) =>
+  apiClient.post<FullProfile>(`/users/${userId}/reactivate`, {});
 
 // ── Course requests ──────────────────────────────────────────────────────────
 

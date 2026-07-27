@@ -73,7 +73,8 @@ function StatCard({
       }}
       style={{
         background: T.card,
-        border: `1px solid ${hover && clickable ? color : T.border}`,
+        border: `1px solid ${T.border}`,
+        borderTop: `3px solid ${color}`,
         borderRadius: 14,
         padding: "16px 18px", position: "relative", overflow: "hidden",
         transitionDelay: `${delay}ms`,
@@ -84,21 +85,14 @@ function StatCard({
       }}
     >
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: color,
-      }} />
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <p style={{ fontSize: 11, color: T.text2, marginBottom: 6, fontWeight: 600 }}>{label}</p>
-          <p style={{ fontSize: 28, fontWeight: 800, color: T.text, margin: 0, letterSpacing: "-0.5px" }}>{value}</p>
-        </div>
-        <div style={{
-          width: 38, height: 38, borderRadius: 10, background: `${color}1a`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0,
-        }}>
-          {icon}
-        </div>
+        width: 34, height: 34, borderRadius: 9, background: `${color}1f`,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+        color, marginBottom: 10,
+      }}>
+        {icon}
       </div>
+      <p style={{ fontSize: 11, color: T.text2, marginBottom: 6, fontWeight: 600 }}>{label}</p>
+      <p style={{ fontSize: 26, fontWeight: 800, color: T.text, margin: 0, letterSpacing: "-0.5px" }}>{value}</p>
     </div>
   );
 }

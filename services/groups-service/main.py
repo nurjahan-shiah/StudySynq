@@ -14,17 +14,19 @@ Runs on port 8003
 
 from datetime import datetime
 from uuid import uuid4, UUID
-from fastapi import FastAPI, HTTPException, status, Depends, Body
+from fastapi import FastAPI, HTTPException, status, Depends, Body, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 
 # Import shared utilities
 import sys
 sys.path.append("/shared")
 from shared_models import (
     Group, GroupMembership, GroupMembershipRole, GroupCourse, Course,
-    User, UserEnrollment, Recommendation, StudySession, ModerationLog, Base
+    User, UserEnrollment, Recommendation, StudySession, Resource, Announcement,
+    ModerationLog, Base
 )
 from shared_database import SessionLocal, engine, get_db
 from shared_auth import get_current_user
@@ -33,6 +35,18 @@ from shared_schemas import (
     GroupMemberResponse, GroupOwnershipTransfer, CourseResponse
 )
 from shared_notifications import create_notification  # US-E refinement: group lifecycle notifications
+
+
+class GroupActivityResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    description: Optional[str] = None
+    actor_id: UUID
+    actor_name: str
+    occurred_at: datetime
+    target_id: UUID
+    target_url: Optional[str] = None
 
 
 def _actor_name(db: Session, user_id) -> str:
@@ -126,6 +140,7 @@ def _get_membership(db: Session, group_id: UUID, user_id):
 
 def _require_group_manager(db: Session, group_id: UUID, current_user):
     group = _get_group_or_404(db, group_id)
+
     if current_user["role"] == "admin":
         return group
 
@@ -138,6 +153,7 @@ def _require_group_manager(db: Session, group_id: UUID, current_user):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only group leaders can manage members"
         )
+
     return group
 
 
@@ -156,6 +172,11 @@ def _leader_count(db: Session, group_id: UUID) -> int:
         GroupMembership.group_id == group_id,
         GroupMembership.role == GroupMembershipRole.LEADER
     ).count()
+
+
+class GroupMemberAddRequest(BaseModel):
+    user_email: str
+    membership_role: str = "member"
 
 
 # ============================================================================
@@ -316,6 +337,116 @@ async def get_group(
         course_codes=course_codes,
         courses=courses
     )
+
+
+@app.get("/groups/{group_id}/activity", response_model=List[GroupActivityResponse])
+async def get_group_activity(
+    group_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return a real, newest-first timeline merged from group event tables."""
+    _get_group_or_404(db, group_id)
+    membership = _get_membership(db, group_id, current_user["user_id"])
+    if not membership and current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this group",
+        )
+
+    events = []
+
+    joins = (
+        db.query(GroupMembership, User.name)
+        .join(User, User.id == GroupMembership.user_id)
+        .filter(GroupMembership.group_id == group_id)
+        .all()
+    )
+    for membership_row, actor_name in joins:
+        events.append({
+            "id": f"join:{membership_row.id}",
+            "type": "member_joined",
+            "title": f"{actor_name} joined the group",
+            "description": None,
+            "actor_id": membership_row.user_id,
+            "actor_name": actor_name,
+            "occurred_at": membership_row.created_at,
+            "target_id": membership_row.id,
+            "target_url": None,
+        })
+
+    sessions = (
+        db.query(StudySession, User.name)
+        .join(User, User.id == StudySession.created_by)
+        .filter(
+            StudySession.group_id == group_id,
+            StudySession.is_deleted == False,  # noqa: E712
+        )
+        .all()
+    )
+    for session, actor_name in sessions:
+        events.append({
+            "id": f"session:{session.id}",
+            "type": "session_created",
+            "title": f"Study session created: {session.title}",
+            "description": session.description,
+            "actor_id": session.created_by,
+            "actor_name": actor_name,
+            "occurred_at": session.created_at,
+            "target_id": session.id,
+            "target_url": f"/groups/{group_id}?tab=sessions",
+        })
+
+    resources = (
+        db.query(Resource, User.name)
+        .join(User, User.id == Resource.uploaded_by)
+        .filter(
+            Resource.group_id == group_id,
+            Resource.is_deleted == False,  # noqa: E712
+        )
+        .all()
+    )
+    for resource, actor_name in resources:
+        events.append({
+            "id": f"resource:{resource.id}",
+            "type": "resource_uploaded",
+            "title": f"Resource uploaded: {resource.file_name}",
+            "description": resource.file_type,
+            "actor_id": resource.uploaded_by,
+            "actor_name": actor_name,
+            "occurred_at": resource.created_at,
+            "target_id": resource.id,
+            "target_url": resource.file_url,
+        })
+
+    announcements = (
+        db.query(Announcement, User.name)
+        .join(User, User.id == Announcement.author_id)
+        .filter(
+            Announcement.group_id == group_id,
+            Announcement.is_deleted == False,  # noqa: E712
+        )
+        .all()
+    )
+    for announcement, actor_name in announcements:
+        events.append({
+            "id": f"announcement:{announcement.id}",
+            "type": "announcement_posted",
+            "title": f"Announcement posted: {announcement.title}",
+            "description": announcement.message,
+            "actor_id": announcement.author_id,
+            "actor_name": actor_name,
+            "occurred_at": announcement.created_at,
+            "target_id": announcement.id,
+            "target_url": f"/groups/{group_id}?tab=announcements",
+        })
+
+    events.sort(
+        key=lambda event: event["occurred_at"] or datetime.min,
+        reverse=True,
+    )
+    return events[:limit]
 
 @app.put("/groups/{group_id}", response_model=GroupResponse)
 async def update_group(
@@ -560,6 +691,76 @@ async def leave_group(
     return {"status": "left"}
 
 
+
+@app.post("/groups/{group_id}/members", response_model=GroupMemberResponse)
+async def add_group_member(
+    group_id: UUID,
+    data: GroupMemberAddRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    US-B.4 - Add a registered user to the group by email.
+    Only the current group leader can add members.
+    """
+    group = _get_group_or_404(db, group_id)
+    _require_group_manager(db, group_id, current_user)
+
+    email = data.user_email.strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Member email is required"
+        )
+
+    normalized_role = data.membership_role.strip().lower()
+    if normalized_role not in {"member", "leader"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="membership_role must be either 'member' or 'leader'"
+        )
+
+    user = db.query(User).filter(User.email.ilike(email)).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found. Ask the student to register first."
+        )
+
+    existing = _get_membership(db, group_id, user.id)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already a member of this group"
+        )
+
+    if normalized_role == "leader":
+        existing_leaders = db.query(GroupMembership).filter(
+            GroupMembership.group_id == group_id,
+            GroupMembership.role == GroupMembershipRole.LEADER
+        ).all()
+
+        for leader in existing_leaders:
+            leader.role = GroupMembershipRole.MEMBER
+
+        group.created_by = user.id
+
+    membership = GroupMembership(
+        user_id=user.id,
+        group_id=group_id,
+        role=GroupMembershipRole.LEADER if normalized_role == "leader" else GroupMembershipRole.MEMBER
+    )
+    db.add(membership)
+    db.commit()
+
+    return GroupMemberResponse(
+        user_id=user.id,
+        user_name=user.name,
+        user_email=user.email,
+        membership_role=membership.role.value
+    )
+
+
 @app.delete("/groups/{group_id}/members/{user_id}")
 async def remove_group_member(
     group_id: UUID,
@@ -618,7 +819,8 @@ async def update_group_member_role(
     current_user = Depends(get_current_user)
 ):
     """
-    US-B.4 - Promote or demote a member between member and leader.
+    US-B.4 - Promote or demote a member.
+    Making someone leader transfers leadership from the current leader.
     """
     group = _require_group_manager(db, group_id, current_user)
 
@@ -648,17 +850,27 @@ async def update_group_member_role(
             detail="membership_role must be either 'member' or 'leader'"
         )
 
-    if (
-        membership.role == GroupMembershipRole.LEADER
-        and normalized_role == "member"
-        and _leader_count(db, group_id) <= 1
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot demote the only group leader"
-        )
+    if normalized_role == "leader":
+        existing_leaders = db.query(GroupMembership).filter(
+            GroupMembership.group_id == group_id,
+            GroupMembership.role == GroupMembershipRole.LEADER
+        ).all()
 
-    membership.role = GroupMembershipRole.LEADER if normalized_role == "leader" else GroupMembershipRole.MEMBER
+        for leader in existing_leaders:
+            leader.role = GroupMembershipRole.MEMBER
+
+        membership.role = GroupMembershipRole.LEADER
+        group.created_by = user_id
+
+    else:
+        if membership.role == GroupMembershipRole.LEADER and _leader_count(db, group_id) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot demote the only group leader"
+            )
+
+        membership.role = GroupMembershipRole.MEMBER
+
     db.commit()
     db.refresh(membership)
 

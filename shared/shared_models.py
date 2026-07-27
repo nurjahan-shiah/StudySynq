@@ -48,6 +48,10 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole, native_enum=False), default=UserRole.STUDENT)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True, nullable=False)
+    deactivation_reason = Column(Text, nullable=True)
+    deactivated_at = Column(DateTime, nullable=True)
+    deactivated_until = Column(DateTime, nullable=True)
     # ── Profile (Complete your profile) ──────────────────────────────────────
     # New columns on an existing table: added at startup by
     # shared_database.run_light_migrations (create_all never ALTERs).
