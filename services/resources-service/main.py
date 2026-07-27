@@ -506,7 +506,9 @@ async def ask_library(
 
 Student question: {question}
 
-Answer the question directly using the attached file content. If asked to summarize a file, write an actual summary. Only if the content is unavailable should you describe the file and suggest a download. Be concise.""",
+Answer the question directly using the attached file content. If asked to summarize a file, write an actual summary.
+Formatting rules: plain text only — no markdown symbols (#, ##, **, backticks). Use short paragraphs separated by blank lines, and simple hyphen bullets for lists. Keep it under ~200 words.
+Only if the content is unavailable should you describe the file and suggest a download.""",
     })
 
     try:
