@@ -60,6 +60,16 @@ function absoluteTime(iso: string): string {
       });
 }
 
+// Deterministic color from the brand palette, keyed by name/group so the same
+// author or group always gets the same color across the feed.
+const TAG_PALETTE = [T.blue, T.green, T.red, "var(--ss-yellow)"] as const;
+function tagColorFor(key: string): string {
+  if (!key) return T.blue;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return TAG_PALETTE[hash % TAG_PALETTE.length];
+}
+
 function timeAgo(iso: string): string {
   const d = parseServerDate(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -328,15 +338,20 @@ function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => 
   }
 
   const groupTag = post.group_name ?? post.author_group;
+  const groupLabel = groupTag ? (post.group_name ?? post.author_group ?? "") : "";
+  const tagColor = tagColorFor(groupLabel);
+  // Deterministic per-author avatar color, cycled through the brand palette
+  // so the feed reads less like a wall of identical red circles.
+  const avatarColor = tagColorFor(post.author_name);
 
   return (
     <div style={{
       background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
-      padding: "12px 14px", marginBottom: 10,
+      padding: "14px 16px", marginBottom: 10,
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: "50%", background: T.red, color: "#fff",
+          width: 32, height: 32, borderRadius: "50%", background: avatarColor, color: "#fff",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 13, fontWeight: 700, flexShrink: 0,
         }}>
@@ -347,24 +362,29 @@ function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => 
             <AuthorName userId={post.author_id} name={post.author_name} />
             {groupTag && (
               <span style={{
-                fontSize: 9.5, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
-                background: `${T.blue}1a`, color: T.blue, letterSpacing: "0.02em",
+                fontSize: 9.5, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                background: `${tagColor}1f`, color: tagColor, letterSpacing: "0.01em",
               }}>
-                {post.group_name ? `in ${post.group_name}` : `from ${post.author_group}`}
+                {post.group_name ? post.group_name : post.author_group}
               </span>
             )}
-            <span title={absoluteTime(post.created_at)} style={{ fontSize: 10.5, color: T.text2, cursor: "help" }}>{timeAgo(post.created_at)}</span>
           </div>
-          <p style={{ fontSize: 13, color: T.text, margin: "5px 0 0", lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          <p title={absoluteTime(post.created_at)} style={{ fontSize: 10.5, color: T.text2, margin: "2px 0 0", cursor: "help" }}>
+            {timeAgo(post.created_at)}
+          </p>
+          <p style={{ fontSize: 13, color: T.text, margin: "8px 0 0", lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {post.content}
           </p>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 16, marginTop: 10,
+            paddingTop: 10, borderTop: `1px solid ${T.border}`,
+          }}>
             <button
               onClick={handleLike}
               style={{
                 display: "flex", alignItems: "center", gap: 5, background: "none", border: "none",
-                cursor: "pointer", fontSize: 12, fontWeight: 700,
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
                 color: liked ? T.red : T.text2, padding: 0,
               }}
             >
@@ -374,10 +394,10 @@ function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => 
               onClick={() => setShowComments(s => !s)}
               style={{
                 display: "flex", alignItems: "center", gap: 5, background: "none", border: "none",
-                cursor: "pointer", fontSize: 12, fontWeight: 700, color: T.text2, padding: 0,
+                cursor: "pointer", fontSize: 12, fontWeight: 600, color: T.text2, padding: 0,
               }}
             >
-              💬 {commentCount}
+              💬 {commentCount} {commentCount === 1 ? "comment" : "comments"}
             </button>
             {post.is_mine && (
               <button

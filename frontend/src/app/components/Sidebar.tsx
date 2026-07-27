@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, FormEvent, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
-import { Logo } from './Logo';
+import { Logo, LogoIcon } from './Logo';
 import { BellIcon } from './BellIcon';
 import { ProfileSetupModal } from './ProfileSetupModal';
 import {
@@ -30,61 +30,76 @@ const T = {
   text: 'var(--text)',
   text2: 'var(--text2)',
   red: 'var(--ss-red)',
+  blue: 'var(--ss-blue)',
+  green: 'var(--ss-green)',
+  yellow: 'var(--ss-yellow)',
 } as const;
 
+// Same palette as the dashboard stat cards, so each nav item's accent color
+// matches its counterpart section on /dashboard (groups=blue, sessions=green,
+// recommended=yellow, tasks/everything-else=red as the default brand color).
 const NAV: {
   id: string;
   label: string;
   icon: ReactNode;
   path: string;
+  color: string;
 }[] = [
   {
     id: 'dashboard',
     label: 'Dashboard',
     icon: '⊞',
     path: '/dashboard',
+    color: T.red,
   },
   {
     id: 'groups',
     label: 'Study groups',
     icon: '⚇',
     path: '/groups',
+    color: T.blue,
   },
   {
     id: 'courses',
     label: 'Courses',
     icon: '◎',
     path: '/courses',
+    color: T.blue,
   },
   {
     id: 'sessions',
     label: 'Sessions',
     icon: '▦',
     path: '/sessions',
+    color: T.green,
   },
   {
     id: 'resources',
     label: 'Resources',
     icon: '⊟',
     path: '/resources',
+    color: T.green,
   },
   {
     id: 'recommendations',
     label: 'Recommended',
     icon: '✦',
     path: '/recommendations',
+    color: T.yellow,
   },
   {
     id: 'tasks',
     label: 'My tasks',
     icon: '✓',
     path: '/tasks',
+    color: T.red,
   },
   {
     id: 'notifications',
     label: 'Notifications',
     icon: <BellIcon size={15} />,
     path: '/notifications',
+    color: T.red,
   },
 ];
 
@@ -95,24 +110,28 @@ const ADMIN_NAV = [
     label: 'Admin course management',
     icon: '⚙',
     path: '/admin',
+    color: T.red,
   },
   {
     id: 'health',
     label: 'System health',
     icon: '◉',
     path: '/admin/health',
+    color: T.green,
   },
   {
     id: 'analytics',
     label: 'Analytics',
     icon: '◔',
     path: '/admin/analytics',
+    color: T.blue,
   },
   {
     id: 'moderation',
     label: 'Moderation',
     icon: '⚑',
     path: '/admin/moderation',
+    color: T.yellow,
   },
 ] as const;
 
@@ -613,6 +632,10 @@ function ModalField({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+const SIDEBAR_COLLAPSE_KEY = 'ss_sidebar_collapsed';
+const EXPANDED_WIDTH = 220;
+const COLLAPSED_WIDTH = 60;
+
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -622,6 +645,21 @@ export function Sidebar() {
   useEffect(() => {
     setIsAdmin(localStorage.getItem('ss_user_role') === 'admin');
   }, []);
+
+  // Collapsed state persists across pages/navigation.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1');
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, next ? '1' : '0');
+      return next;
+    });
+  }
+
   const nav = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
 
   const activeId =
@@ -634,22 +672,72 @@ export function Sidebar() {
   return (
     <aside
       style={{
-        width: 220,
+        width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         flexShrink: 0,
         borderRight: `1px solid ${T.border}`,
         background: T.bg2,
         display: 'flex',
         flexDirection: 'column',
-        padding: '0 10px',
+        padding: collapsed ? '0 6px' : '0 10px',
+        transition: 'width 0.18s ease, padding 0.18s ease',
+        overflow: 'hidden',
       }}
     >
       <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'space-between',
           padding: '18px 6px 14px',
         }}
       >
-        <Logo iconSize={32} wordmarkSize="1.2rem" linked={false} />
+        {!collapsed && <Logo iconSize={32} wordmarkSize="1.2rem" linked={false} />}
+        {collapsed && <LogoIcon size={28} />}
+
+        {!collapsed && (
+          <button
+            onClick={toggleCollapsed}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: T.text2,
+              fontSize: 15,
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            «
+          </button>
+        )}
       </div>
+
+      {collapsed && (
+        <button
+          onClick={toggleCollapsed}
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: T.text2,
+            fontSize: 15,
+            padding: '4px 0 10px',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          »
+        </button>
+      )}
 
       <nav
         style={{
@@ -666,20 +754,22 @@ export function Sidebar() {
             <button
               key={item.id}
               onClick={() => router.push(item.path)}
+              title={collapsed ? item.label : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '8px 10px',
+                padding: collapsed ? '9px 0' : '8px 10px',
                 borderRadius: 9,
                 fontSize: 13,
-                color: isActive ? T.red : T.text2,
-                background: isActive ? `${T.red}15` : 'transparent',
-                border: 'none',
+                color: isActive ? item.color : T.text2,
+                background: isActive ? `${item.color}18` : 'transparent',
+                borderLeft: isActive ? `2px solid ${item.color}` : '2px solid transparent',
                 cursor: 'pointer',
                 width: '100%',
                 textAlign: 'left',
                 fontWeight: isActive ? 700 : 400,
+                justifyContent: collapsed ? 'center' : 'flex-start',
               }}
             >
               <span
@@ -695,13 +785,18 @@ export function Sidebar() {
                 {item.icon}
               </span>
 
-              <span
-                style={{
-                  flex: 1,
-                }}
-              >
-                {item.label}
-              </span>
+              {!collapsed && (
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.label}
+                </span>
+              )}
             </button>
           );
         })}
