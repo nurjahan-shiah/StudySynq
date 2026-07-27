@@ -19,3 +19,7 @@ pgdata/
 
 # prevent from accidentally committing gigabytes of Parquet
 delta-lake-data/
+
+# macOS / editor "keep both" duplicate copies, e.g. "main 2.py", "Dockerfile 2"
+*\ 2.*
+*\ 2

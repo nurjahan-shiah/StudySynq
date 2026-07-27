@@ -1,0 +1,21 @@
+# Environment variables - NEVER commit these
+.env
+.env.local
+.env.development
+.env.production
+*.env
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# Docker volumes
+pgdata/
+
+# prevent from accidentally committing gigabytes of Parquet
+delta-lake-data/

@@ -12,6 +12,7 @@ Groups Service
 Runs on port 8003
 """
 
+from datetime import datetime
 from uuid import uuid4, UUID
 from fastapi import FastAPI, HTTPException, status, Depends, Body
 from sqlalchemy.orm import Session
@@ -22,10 +23,47 @@ from pydantic import BaseModel
 # Import shared utilities
 import sys
 sys.path.append("/shared")
-from shared_models import Group, GroupMembership, GroupMembershipRole, GroupCourse, Course, User, Base
+from shared_models import (
+    Group, GroupMembership, GroupMembershipRole, GroupCourse, Course,
+    User, UserEnrollment, Recommendation, StudySession, ModerationLog, Base
+)
 from shared_database import SessionLocal, engine, get_db
 from shared_auth import get_current_user
-from shared_schemas import GroupCreate, GroupResponse, GroupDetailResponse, GroupUpdate, GroupMemberResponse
+from shared_schemas import (
+    GroupCreate, GroupResponse, GroupDetailResponse, GroupUpdate,
+    GroupMemberResponse, GroupOwnershipTransfer, CourseResponse
+)
+from shared_notifications import create_notification  # US-E refinement: group lifecycle notifications
+
+
+def _actor_name(db: Session, user_id) -> str:
+    u = db.query(User).filter(User.id == user_id).first()
+    return u.name if u else "A member"
+
+
+def _notify_user(db: Session, user_id, ntype, title, message, link=None, group_id=None):
+    """Best-effort single-user notification — never breaks the core action."""
+    try:
+        create_notification(db, user_id=user_id, type=ntype, title=title,
+                            message=message, link=link, group_id=group_id)
+    except Exception as e:  # pragma: no cover
+        print(f"[groups-service] notification failed: {e}")
+
+
+def _notify_leaders(db: Session, group_id, exclude_user_id, title, message, link):
+    """Best-effort ambient 'group_activity' notification to the group's leaders."""
+    try:
+        leaders = (db.query(GroupMembership)
+                     .filter(GroupMembership.group_id == group_id,
+                             GroupMembership.role == GroupMembershipRole.LEADER)
+                     .all())
+        for m in leaders:
+            if exclude_user_id and str(m.user_id) == str(exclude_user_id):
+                continue
+            create_notification(db, user_id=m.user_id, type="group_activity",
+                                title=title, message=message, link=link, group_id=group_id)
+    except Exception as e:  # pragma: no cover
+        print(f"[groups-service] notify leaders failed: {e}")
 
 # ============================================================================
 # Initialize Database
@@ -64,6 +102,22 @@ def _get_group_or_404(db: Session, group_id: UUID):
     return group
 
 
+def _invalidate_recommendations(db: Session, user_ids) -> None:
+    """Drop cached ML recommendation rows for the given users.
+
+    Membership changes alter which groups are candidates, so precomputed
+    scores go stale immediately. Deleting them makes the recommendations
+    endpoint fall back to live course-overlap scoring until the next ETL
+    run rewrites the table. Caller commits.
+    """
+    ids = [uid for uid in (user_ids or []) if uid]
+    if not ids:
+        return
+    db.query(Recommendation).filter(
+        Recommendation.user_id.in_(ids)
+    ).delete(synchronize_session=False)
+
+
 def _get_membership(db: Session, group_id: UUID, user_id):
     return db.query(GroupMembership).filter(
         GroupMembership.group_id == group_id,
@@ -72,12 +126,32 @@ def _get_membership(db: Session, group_id: UUID, user_id):
 
 
 def _require_group_manager(db: Session, group_id: UUID, current_user):
+    group = _get_group_or_404(db, group_id)
+
+    if current_user["role"] == "admin":
+        return group
+
+    if str(group.created_by) == str(current_user["user_id"]):
+        return group
+
     membership = _get_membership(db, group_id, current_user["user_id"])
     if not (membership and membership.role == GroupMembershipRole.LEADER):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only group leaders can manage members"
         )
+
+    return group
+
+
+def _require_group_owner(db: Session, group_id: UUID, current_user):
+    group = _get_group_or_404(db, group_id)
+    if current_user["role"] != "admin" and str(group.created_by) != str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner can perform this action"
+        )
+    return group
 
 
 def _leader_count(db: Session, group_id: UUID) -> int:
@@ -119,6 +193,8 @@ async def list_groups(
             name=g.name,
             description=g.description,
             is_public=g.is_public,
+            session=g.session,
+            section=g.section,
             intended_major=g.intended_major,
             created_by=g.created_by,
             created_at=g.created_at
@@ -143,7 +219,9 @@ async def create_group(
         description=group_data.description,
         created_by=current_user["user_id"],
         is_public=group_data.is_public,
-        intended_major=group_data.intended_major
+        intended_major=group_data.intended_major,
+        session=group_data.session,
+        section=group_data.section,
     )
     
     db.add(new_group)
@@ -166,6 +244,18 @@ async def create_group(
                 course_id=course_id
             )
             db.add(group_course)
+
+    # A new course-linked group changes the candidate set for enrolled
+    # students. Clear their cached scores so the recommendations endpoint
+    # immediately uses current course overlap until the next ETL refresh.
+    if group_data.course_ids:
+        affected_user_ids = [row[0] for row in (
+            db.query(UserEnrollment.user_id)
+            .filter(UserEnrollment.course_id.in_(group_data.course_ids))
+            .distinct()
+            .all()
+        )]
+        _invalidate_recommendations(db, affected_user_ids)
     
     db.commit()
     db.refresh(new_group)
@@ -175,6 +265,8 @@ async def create_group(
         name=new_group.name,
         description=new_group.description,
         is_public=new_group.is_public,
+        session=new_group.session,
+        section=new_group.section,
         intended_major=new_group.intended_major,
         created_by=new_group.created_by,
         created_at=new_group.created_at
@@ -206,21 +298,31 @@ async def get_group(
         GroupCourse.group_id == group_id
     ).all()
     course_codes = []
+    courses = []
     for gc in group_courses:
         course = db.query(Course).filter(Course.id == gc.course_id).first()
         if course:
             course_codes.append(course.course_code)
+            courses.append(CourseResponse(
+                id=course.id,
+                course_code=course.course_code,
+                course_name=course.course_name,
+                department=course.department
+            ))
     
     return GroupDetailResponse(
         id=group.id,
         name=group.name,
         description=group.description,
         is_public=group.is_public,
+        session=group.session,
+        section=group.section,
         intended_major=group.intended_major,
         created_by=group.created_by,
         created_at=group.created_at,
         member_count=member_count,
-        course_codes=course_codes
+        course_codes=course_codes,
+        courses=courses
     )
 
 @app.put("/groups/{group_id}", response_model=GroupResponse)
@@ -234,37 +336,51 @@ async def update_group(
     Update group information.
     Only group leader or admin can update.
     """
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
-        )
-    
-    # Check authorization: must be group leader or admin
-    membership = db.query(GroupMembership).filter(
-        GroupMembership.group_id == group_id,
-        GroupMembership.user_id == current_user["user_id"]
-    ).first()
-    
-    is_leader = membership and membership.role == GroupMembershipRole.LEADER
-    is_admin = current_user["role"] == "admin"
-    
-    if not (is_leader or is_admin):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only group leader can update group"
-        )
+    group = _require_group_manager(db, group_id, current_user)
     
     # Update fields
-    if group_data.name:
-        group.name = group_data.name
+    if group_data.name is not None:
+        normalized_name = group_data.name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=400, detail="Group name cannot be empty")
+        group.name = normalized_name
     if group_data.description is not None:
         group.description = group_data.description
     if group_data.is_public is not None:
         group.is_public = group_data.is_public
     if group_data.intended_major is not None:
         group.intended_major = group_data.intended_major
+    if group_data.session is not None:
+        group.session = group_data.session or None
+    if group_data.section is not None:
+        group.section = group_data.section or None
+
+    if group_data.course_ids is not None:
+        course_ids = list(dict.fromkeys(group_data.course_ids))
+        if not course_ids:
+            raise HTTPException(status_code=400, detail="Select at least one linked course")
+
+        valid_courses = db.query(Course).filter(Course.id.in_(course_ids)).all()
+        if len(valid_courses) != len(course_ids):
+            raise HTTPException(status_code=400, detail="One or more selected courses do not exist")
+
+        previous_course_ids = [row.course_id for row in db.query(GroupCourse).filter(
+            GroupCourse.group_id == group_id
+        ).all()]
+        db.query(GroupCourse).filter(GroupCourse.group_id == group_id).delete(
+            synchronize_session=False
+        )
+        for course_id in course_ids:
+            db.add(GroupCourse(group_id=group_id, course_id=course_id))
+
+        affected_course_ids = list(set(previous_course_ids + course_ids))
+        affected_user_ids = [row[0] for row in (
+            db.query(UserEnrollment.user_id)
+            .filter(UserEnrollment.course_id.in_(affected_course_ids))
+            .distinct()
+            .all()
+        )]
+        _invalidate_recommendations(db, affected_user_ids)
     
     db.commit()
     db.refresh(group)
@@ -274,6 +390,8 @@ async def update_group(
         name=group.name,
         description=group.description,
         is_public=group.is_public,
+        session=group.session,
+        section=group.section,
         intended_major=group.intended_major,
         created_by=group.created_by,
         created_at=group.created_at
@@ -289,26 +407,64 @@ async def delete_group(
     Delete a group.
     Only group leader or admin can delete.
     """
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
-        )
-    
-    # Authorization check
-    is_leader = group.created_by == current_user["user_id"]
-    is_admin = current_user["role"] == "admin"
-    
-    if not (is_leader or is_admin):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only group creator can delete group"
-        )
-    
-    db.delete(group)
+    group = _require_group_owner(db, group_id, current_user)
+
+    # Keep historical records with group foreign keys intact while removing the
+    # group from every active StudySync view.
+    now = datetime.utcnow()
+    group.is_deleted = True
+    group.deleted_at = now
+    group.deleted_by = current_user["user_id"]
+
+    # Cascade the soft-delete to the group's sessions. Without this the
+    # sessions stay live: they keep appearing in "upcoming" feeds and
+    # recommendation cards for a group nobody can open.
+    db.query(StudySession).filter(
+        StudySession.group_id == group_id,
+        StudySession.is_deleted == False,       # noqa: E712
+    ).update(
+        {
+            StudySession.is_deleted: True,
+            StudySession.deleted_at: now,
+            StudySession.deleted_by: current_user["user_id"],
+        },
+        synchronize_session=False,
+    )
+
+    db.query(Recommendation).filter(Recommendation.group_id == group_id).delete(
+        synchronize_session=False
+    )
+
+    # Record it in the same audit trail admins use, so a leader deleting
+    # their own group is visible in the moderation console and can be
+    # restored from there.
+    is_admin = str(current_user.get("role", "")).lower().endswith("admin")
+    db.add(ModerationLog(
+        id=uuid4(),
+        admin_id=current_user["user_id"],
+        entity_type="group",
+        entity_id=str(group_id),
+        action="delete",
+        reason=None,
+        target_title=group.name,
+        actor_role="admin" if is_admin else "leader",
+        created_at=now,
+    ))
+
     db.commit()
-    
+
+    # Members otherwise lose access with zero warning — notify everyone but the deleter.
+    remaining_members = (db.query(GroupMembership)
+                            .filter(GroupMembership.group_id == group_id)
+                            .all())
+    for m in remaining_members:
+        if str(m.user_id) == str(current_user["user_id"]):
+            continue
+        _notify_user(db, m.user_id, "system",
+                     title="Group deleted",
+                     message=f'"{group.name}" was deleted and is no longer accessible.',
+                     link="/groups")
+
     return {"status": "deleted"}
 
 @app.post("/groups/{group_id}/join")
@@ -318,15 +474,23 @@ async def join_group(
     current_user = Depends(get_current_user)
 ):
     """
-    Join a group as a member.
+    Join a public group as a member.
+
+    Uses _get_group_or_404 rather than a bare id lookup so that groups an
+    admin has moderated (is_deleted) are unjoinable — previously this
+    endpoint was the one place that skipped that check, which meant a
+    soft-deleted group could still be joined by anyone holding its id.
     """
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
+    group = _get_group_or_404(db, group_id)
+
+    # Private groups are not open-join. They're only reachable by id, so
+    # without this check "private" meant nothing more than "unlisted".
+    if not group.is_public:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This group is private. Ask a group leader for an invite."
         )
-    
+
     # Check if already member
     existing = db.query(GroupMembership).filter(
         GroupMembership.user_id == current_user["user_id"],
@@ -346,8 +510,19 @@ async def join_group(
         role=GroupMembershipRole.MEMBER
     )
     db.add(membership)
+
+    # Joining changes this user's candidate set, so any cached ML scores for
+    # them are now stale. Clearing them makes the recommendations endpoint
+    # fall back to live overlap until the next ETL run.
+    _invalidate_recommendations(db, [current_user["user_id"]])
+
     db.commit()
-    
+
+    _notify_leaders(db, group_id, current_user["user_id"],
+                    title="New member joined",
+                    message=f"{_actor_name(db, current_user['user_id'])} joined {group.name}",
+                    link=f"/groups/{group_id}?tab=members")
+
     return {"status": "joined"}
 
 @app.delete("/groups/{group_id}/leave")
@@ -359,6 +534,13 @@ async def leave_group(
     """
     Leave a group.
     """
+    group = _get_group_or_404(db, group_id)
+    if str(group.created_by) == str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transfer ownership before leaving this group"
+        )
+
     membership = db.query(GroupMembership).filter(
         GroupMembership.user_id == current_user["user_id"],
         GroupMembership.group_id == group_id
@@ -371,8 +553,18 @@ async def leave_group(
         )
     
     db.delete(membership)
+
+    # Leaving puts this group back in play for the user, so cached scores
+    # (which were computed while they were a member) are stale.
+    _invalidate_recommendations(db, [current_user["user_id"]])
+
     db.commit()
-    
+
+    _notify_leaders(db, group_id, current_user["user_id"],
+                    title="A member left",
+                    message=f"{_actor_name(db, current_user['user_id'])} left {group.name}",
+                    link=f"/groups/{group_id}?tab=members")
+
     return {"status": "left"}
 
 
@@ -457,13 +649,18 @@ async def remove_group_member(
     US-B.4 - Group Leader Management Console.
     Group leaders/admins can remove members, but they cannot remove themselves.
     """
-    _get_group_or_404(db, group_id)
-    _require_group_manager(db, group_id, current_user)
+    group = _require_group_manager(db, group_id, current_user)
 
     if str(user_id) == str(current_user["user_id"]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Leaders cannot remove themselves from the management console"
+        )
+
+    if str(user_id) == str(group.created_by):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The group owner cannot be removed"
         )
 
     membership = _get_membership(db, group_id, user_id)
@@ -482,6 +679,11 @@ async def remove_group_member(
     db.delete(membership)
     db.commit()
 
+    _notify_user(db, user_id, "system",
+                 title="Removed from a group",
+                 message=f"You were removed from {group.name}",
+                 link="/groups")
+
     return {"status": "removed", "group_id": group_id, "user_id": user_id}
 
 
@@ -497,13 +699,18 @@ async def update_group_member_role(
     US-B.4 - Promote or demote a member.
     Making someone leader transfers leadership from the current leader.
     """
-    group = _get_group_or_404(db, group_id)
-    _require_group_manager(db, group_id, current_user)
+    group = _require_group_manager(db, group_id, current_user)
 
     if str(user_id) == str(current_user["user_id"]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Leaders cannot change their own role"
+        )
+
+    if str(user_id) == str(group.created_by):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The group owner's role cannot be changed"
         )
 
     membership = _get_membership(db, group_id, user_id)
@@ -544,6 +751,11 @@ async def update_group_member_role(
     db.commit()
     db.refresh(membership)
 
+    _notify_user(db, user_id, "system",
+                 title="Your group role changed",
+                 message=f"You are now a {normalized_role} in {group.name}",
+                 link=f"/groups/{group_id}", group_id=group_id)
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
@@ -559,6 +771,42 @@ async def update_group_member_role(
     )
 
 
+@app.post("/groups/{group_id}/transfer-ownership")
+async def transfer_group_ownership(
+    group_id: UUID,
+    transfer: GroupOwnershipTransfer,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Transfer ownership to an existing member; the previous owner remains a leader."""
+    group = _require_group_owner(db, group_id, current_user)
+
+    if str(transfer.new_owner_id) == str(group.created_by):
+        raise HTTPException(status_code=400, detail="This member already owns the group")
+
+    new_owner_membership = _get_membership(db, group_id, transfer.new_owner_id)
+    if not new_owner_membership:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ownership can only be transferred to an existing group member"
+        )
+
+    new_owner_membership.role = GroupMembershipRole.LEADER
+    group.created_by = transfer.new_owner_id
+    db.commit()
+
+    _notify_user(db, transfer.new_owner_id, "system",
+                 title="You are now a group owner",
+                 message=f"You are now the owner of {group.name}",
+                 link=f"/groups/{group_id}", group_id=group_id)
+
+    return {
+        "status": "transferred",
+        "group_id": group_id,
+        "new_owner_id": transfer.new_owner_id
+    }
+
+
 @app.get("/groups/{group_id}/members", response_model=List[GroupMemberResponse])
 async def list_group_members(
     group_id: UUID,
@@ -568,12 +816,7 @@ async def list_group_members(
     """
     List all members of a group.
     """
-    group = db.query(Group).filter(Group.id == group_id).first()
-    if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
-        )
+    _get_group_or_404(db, group_id)
     
     memberships = db.query(GroupMembership).filter(
         GroupMembership.group_id == group_id

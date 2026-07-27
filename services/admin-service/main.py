@@ -29,10 +29,16 @@ import sys
 
 sys.path.append("/shared")
 
-from shared_models import User, Course, Group, Resource, Announcement, GroupMembership, Base
+from shared_models import (
+    User, Course, Group, Resource, Announcement, GroupMembership,
+    GroupCourse, UserEnrollment, Recommendation, ModerationLog,
+    StudySession, Base
+)
+from shared_time import iso_utc
 from shared_database import engine, get_db
 from shared_auth import require_admin as require_admin_user
-from shared_schemas import CourseCreate, CourseResponse
+from shared_schemas import CourseCreate, CourseResponse, CourseUpdate
+from shared_notifications import create_group_notifications
 
 
 # ============================================================================
@@ -66,18 +72,9 @@ class AdminAuditLog(Base):
     )
 
 
-# US-F.2 — dedicated moderation audit trail (who deleted what content, when, why)
-class ModerationLog(Base):
-    __tablename__ = "moderation_logs"
-
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    admin_id = Column(PG_UUID(as_uuid=True), nullable=False)
-    entity_type = Column(String(20), nullable=False)   # group | resource | announcement
-    entity_id = Column(String(255), nullable=False)
-    action = Column(String(50), nullable=False, default="delete")
-    reason = Column(Text, nullable=True)
-    target_title = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+# US-F.2 — the moderation audit trail now lives in shared/shared_models.py so
+# that groups-service can append to it as well (a leader deleting their own
+# group must show up here, otherwise admins can neither see nor restore it).
 
 
 # ============================================================================
@@ -121,13 +118,20 @@ def _ensure_soft_delete_columns():
     from sqlalchemy import text
 
     with engine.connect() as conn:
-        for table in ("groups", "resources", "announcements"):
+        for table in ("groups", "resources", "announcements", "study_sessions",
+                      "posts", "post_comments"):
             conn.execute(text(
                 f"ALTER TABLE {table} "
                 "ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE, "
                 "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP, "
                 "ADD COLUMN IF NOT EXISTS deleted_by UUID"
             ))
+        # actor_role distinguishes an admin moderating someone else's content
+        # from an owner deleting their own (groups-service writes here too).
+        conn.execute(text(
+            "ALTER TABLE moderation_logs "
+            "ADD COLUMN IF NOT EXISTS actor_role VARCHAR(20)"
+        ))
         conn.commit()
 
 
@@ -197,7 +201,8 @@ def log_action(
     db.add(entry)
 
 
-def log_moderation(db, admin_id, entity_type, entity_id, action, reason, target_title):
+def log_moderation(db, admin_id, entity_type, entity_id, action, reason,
+                   target_title, actor_role="admin"):
     """US-F.2: record a moderation action. Caller commits."""
     entry = ModerationLog(
         id=uuid4(),
@@ -207,6 +212,7 @@ def log_moderation(db, admin_id, entity_type, entity_id, action, reason, target_
         action=action,
         reason=reason,
         target_title=target_title,
+        actor_role=actor_role,
         created_at=datetime.utcnow(),
     )
     db.add(entry)
@@ -348,6 +354,7 @@ async def analytics_overview(
 
     most_active_groups = [
         {
+            "id": str(r["id"]),
             "name": r["name"],
             "member_count": int(r["member_count"]),
             "session_count": int(r["session_count"]),
@@ -355,7 +362,7 @@ async def analytics_overview(
         }
         for r in db.execute(text(
             "SELECT * FROM ("
-            "  SELECT g.name,"
+            "  SELECT g.id, g.name,"
             "    (SELECT COUNT(*) FROM group_memberships gm WHERE gm.group_id = g.id) AS member_count,"
             "    (SELECT COUNT(*) FROM study_sessions s WHERE s.group_id = g.id) AS session_count,"
             "    (SELECT COUNT(*) FROM resources r WHERE r.group_id = g.id AND r.is_deleted = FALSE) AS resource_count"
@@ -368,7 +375,7 @@ async def analytics_overview(
         {
             "type": r["type"],
             "title": r["title"],
-            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "created_at": iso_utc(r["created_at"]),
         }
         for r in db.execute(text(
             "SELECT type, title, created_at FROM ("
@@ -685,11 +692,15 @@ async def admin_create_course(
 ):
     from sqlalchemy.exc import IntegrityError
 
+    from shared_schemas import derive_year_level
+
     new_course = Course(
         id=uuid4(),
         course_code=course_data.course_code,
         course_name=course_data.course_name,
         department=course_data.department,
+        faculty=course_data.faculty,
+        year_level=course_data.year_level or derive_year_level(course_data.course_code),
     )
 
     try:
@@ -715,6 +726,136 @@ async def admin_create_course(
         )
 
     return new_course
+
+
+@app.put(
+    "/admin/courses/{course_id}",
+    response_model=CourseResponse,
+)
+async def admin_update_course(
+    course_id: str,
+    course_data: CourseUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """Admin edits any course field (code stays York-format validated)."""
+    from sqlalchemy.exc import IntegrityError
+    from shared_schemas import derive_year_level
+
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    if course_data.course_code is not None:
+        course.course_code = course_data.course_code
+        # Keep the derived level in sync unless an explicit one was sent too.
+        if course_data.year_level is None:
+            course.year_level = derive_year_level(course_data.course_code)
+    if course_data.course_name is not None:
+        course.course_name = course_data.course_name.strip()
+    if course_data.department is not None:
+        course.department = course_data.department.strip()
+    if course_data.faculty is not None:
+        course.faculty = course_data.faculty.strip() or None
+    if course_data.year_level is not None:
+        course.year_level = course_data.year_level
+
+    try:
+        log_action(
+            db,
+            current_user["user_id"],
+            "update_course",
+            str(course.id),
+            f"Updated {course.course_code}",
+        )
+        db.commit()
+        db.refresh(course)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Course code already exists")
+
+    return course
+
+
+@app.post("/admin/courses/seed")
+async def admin_seed_courses(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """One-click import of the bundled York catalogue seed
+    (/shared/york_courses_seed.json: faculty, code, name, year level).
+
+    Existing course codes are skipped, so this is safe to run repeatedly and
+    never overwrites admin edits. Hardened to always return valid JSON —
+    never a raw crash — so failures are visible in the Logs tab even without
+    shell access.
+    """
+    import json
+    import os
+    import traceback
+
+    try:
+        seed_path = None
+        candidates = [
+            "/shared/york_courses_seed.json",
+            os.path.join(os.path.dirname(__file__), "..", "..", "shared", "york_courses_seed.json"),
+            os.path.join(os.getcwd(), "shared", "york_courses_seed.json"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                seed_path = candidate
+                break
+
+        if not seed_path:
+            print(f"[seed] Seed file not found. Checked: {candidates}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Seed catalogue file not found on this deployment. Checked paths: {candidates}",
+            )
+
+        print(f"[seed] Loading seed file from {seed_path}")
+        with open(seed_path) as f:
+            entries = json.load(f)
+        print(f"[seed] Loaded {len(entries)} entries from seed file")
+
+        existing_codes = {row[0] for row in db.query(Course.course_code).all()}
+
+        added = 0
+        for e in entries:
+            code = e.get("course_code")
+            if not code or code in existing_codes:
+                continue
+            db.add(Course(
+                id=uuid4(),
+                course_code=code,
+                course_name=e.get("course_name", code),
+                department=e.get("department", code.split()[0]),
+                faculty=e.get("faculty"),
+                year_level=e.get("year_level"),
+            ))
+            existing_codes.add(code)
+            added += 1
+
+        log_action(
+            db,
+            current_user["user_id"],
+            "seed_courses",
+            "catalogue",
+            f"Seeded York catalogue: {added} added, {len(entries) - added} already present",
+        )
+        db.commit()
+
+        result = {"added": added, "skipped": len(entries) - added, "total_in_seed": len(entries)}
+        print(f"[seed] Done: {result}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        print(f"[seed] UNHANDLED ERROR: {exc}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Seed failed: {exc}")
 
 
 @app.delete(
@@ -746,6 +887,17 @@ async def admin_delete_course(
         f"Deleted {course.course_code}"
     )
 
+    # Remove dependent links first. The foreign-key columns are non-nullable,
+    # so deleting the course directly would otherwise make SQLAlchemy attempt
+    # to set them to NULL and produce a 500 response.
+    db.query(GroupCourse).filter(GroupCourse.course_id == course.id).delete(
+        synchronize_session=False
+    )
+    db.query(UserEnrollment).filter(UserEnrollment.course_id == course.id).delete(
+        synchronize_session=False
+    )
+    # Course removal changes recommendation inputs platform-wide.
+    db.query(Recommendation).delete(synchronize_session=False)
     db.delete(course)
     db.commit()
 
@@ -778,9 +930,7 @@ async def get_audit_log(
             "action": entry.action,
             "target_id": entry.target_id,
             "detail": entry.detail,
-            "performed_at": (
-                entry.performed_at.isoformat()
-            ),
+            "performed_at": iso_utc(entry.performed_at),
         }
         for entry in logs
     ]
@@ -867,13 +1017,28 @@ def _group_name(db: Session, group_id) -> str:
     return g.name if g else "Unknown group"
 
 
+def _apply_deleted_filter(q, model, include_deleted: bool):
+    """Scope a moderation listing to live rows, or to deleted rows only.
+
+    The console needs both: the default view lists what is currently visible
+    to users, and the "Deleted" view lists what has been moderated away so an
+    admin can restore it. Previously only the live view existed, which meant
+    the restore endpoint had no reachable entry point once an item scrolled
+    out of the capped audit log.
+    """
+    if include_deleted:
+        return q.filter(model.is_deleted == True)   # noqa: E712
+    return q.filter(model.is_deleted == False)      # noqa: E712
+
+
 @app.get("/admin/moderation/groups")
 async def moderation_groups(
     search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False, description="List soft-deleted groups instead of live ones"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
-    q = db.query(Group).filter(Group.is_deleted == False)  # noqa: E712
+    q = _apply_deleted_filter(db.query(Group), Group, include_deleted)
     if search:
         q = q.filter(Group.name.ilike(f"%{search}%"))
     groups = q.order_by(Group.created_at.desc()).all()
@@ -885,7 +1050,10 @@ async def moderation_groups(
             "created_by": str(g.created_by),
             "creator_name": _user_name(db, g.created_by),
             "member_count": db.query(GroupMembership).filter(GroupMembership.group_id == g.id).count(),
-            "created_at": g.created_at.isoformat() if g.created_at else None,
+            "created_at": iso_utc(g.created_at),
+            "is_deleted": bool(g.is_deleted),
+            "deleted_at": iso_utc(g.deleted_at),
+            "deleted_by_name": _user_name(db, g.deleted_by) if g.deleted_by else None,
         }
         for g in groups
     ]
@@ -894,10 +1062,11 @@ async def moderation_groups(
 @app.get("/admin/moderation/resources")
 async def moderation_resources(
     search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False, description="List soft-deleted resources instead of live ones"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
-    q = db.query(Resource).filter(Resource.is_deleted == False)  # noqa: E712
+    q = _apply_deleted_filter(db.query(Resource), Resource, include_deleted)
     if search:
         q = q.filter(Resource.file_name.ilike(f"%{search}%"))
     resources = q.order_by(Resource.created_at.desc()).all()
@@ -910,7 +1079,10 @@ async def moderation_resources(
             "uploader_name": _user_name(db, r.uploaded_by),
             "group_id": str(r.group_id),
             "group_name": _group_name(db, r.group_id),
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": iso_utc(r.created_at),
+            "is_deleted": bool(r.is_deleted),
+            "deleted_at": iso_utc(r.deleted_at),
+            "deleted_by_name": _user_name(db, r.deleted_by) if r.deleted_by else None,
         }
         for r in resources
     ]
@@ -919,10 +1091,11 @@ async def moderation_resources(
 @app.get("/admin/moderation/announcements")
 async def moderation_announcements(
     search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False, description="List soft-deleted announcements instead of live ones"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
-    q = db.query(Announcement).filter(Announcement.is_deleted == False)  # noqa: E712
+    q = _apply_deleted_filter(db.query(Announcement), Announcement, include_deleted)
     if search:
         q = q.filter(Announcement.title.ilike(f"%{search}%"))
     anns = q.order_by(Announcement.created_at.desc()).all()
@@ -936,9 +1109,50 @@ async def moderation_announcements(
             "group_id": str(a.group_id),
             "group_name": _group_name(db, a.group_id),
             "is_pinned": a.is_pinned,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "created_at": iso_utc(a.created_at),
+            "is_deleted": bool(a.is_deleted),
+            "deleted_at": iso_utc(a.deleted_at),
+            "deleted_by_name": _user_name(db, a.deleted_by) if a.deleted_by else None,
         }
         for a in anns
+    ]
+
+
+@app.get("/admin/moderation/sessions")
+async def moderation_sessions(
+    search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False, description="List soft-deleted sessions instead of live ones"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_user),
+):
+    """US-F.2: study sessions are moderatable content.
+
+    Their titles and locations are shown to non-members on the
+    recommendations page, so they need the same delete/restore path as
+    groups, resources and announcements.
+    """
+    q = _apply_deleted_filter(db.query(StudySession), StudySession, include_deleted)
+    if search:
+        q = q.filter(StudySession.title.ilike(f"%{search}%"))
+    sessions = q.order_by(StudySession.scheduled_at.desc()).all()
+    return [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "description": s.description,
+            "location": s.location,
+            "scheduled_at": iso_utc(s.scheduled_at),
+            "created_by": str(s.created_by),
+            "creator_name": _user_name(db, s.created_by),
+            "group_id": str(s.group_id),
+            "group_name": _group_name(db, s.group_id),
+            "is_cancelled": bool(s.is_cancelled),
+            "created_at": iso_utc(s.created_at),
+            "is_deleted": bool(s.is_deleted),
+            "deleted_at": iso_utc(s.deleted_at),
+            "deleted_by_name": _user_name(db, s.deleted_by) if s.deleted_by else None,
+        }
+        for s in sessions
     ]
 
 
@@ -947,7 +1161,12 @@ _MODERATION_ENTITIES = {
     "group": (Group, "name"),
     "resource": (Resource, "file_name"),
     "announcement": (Announcement, "title"),
+    # Sessions are surfaced to non-members (recommendation cards show a
+    # group's upcoming sessions), so their titles need to be moderatable too.
+    "session": (StudySession, "title"),
 }
+
+_MODERATION_ENTITY_LABEL = ", ".join(sorted(_MODERATION_ENTITIES))
 
 
 @app.delete("/admin/moderation/{entity}/{item_id}")
@@ -960,7 +1179,7 @@ async def moderation_delete(
 ):
     """Soft-delete any group / resource / announcement and record it in the audit log."""
     if entity not in _MODERATION_ENTITIES:
-        raise HTTPException(status_code=400, detail="Invalid entity. Use group, resource, or announcement.")
+        raise HTTPException(status_code=400, detail=f"Invalid entity. Use one of: {_MODERATION_ENTITY_LABEL}.")
 
     model, title_attr = _MODERATION_ENTITIES[entity]
     item = db.query(model).filter(model.id == item_id).first()
@@ -968,14 +1187,48 @@ async def moderation_delete(
         raise HTTPException(status_code=404, detail=f"{entity.capitalize()} not found")
 
     target_title = getattr(item, title_attr, None)
+    now = datetime.utcnow()
     item.is_deleted = True
-    item.deleted_at = datetime.utcnow()
+    item.deleted_at = now
     item.deleted_by = current_user["user_id"]
+
+    # Deleting a group hides the group but leaves its sessions live unless we
+    # cascade — they would keep surfacing in upcoming-session feeds and on
+    # recommendation cards for a group nobody can open.
+    if entity == "group":
+        db.query(StudySession).filter(
+            StudySession.group_id == item.id,
+            StudySession.is_deleted == False,   # noqa: E712
+        ).update(
+            {
+                StudySession.is_deleted: True,
+                StudySession.deleted_at: now,
+                StudySession.deleted_by: current_user["user_id"],
+            },
+            synchronize_session=False,
+        )
+        # Cached recommendations pointing at a hidden group are dead weight.
+        db.query(Recommendation).filter(
+            Recommendation.group_id == item.id
+        ).delete(synchronize_session=False)
 
     entry = log_moderation(
         db, current_user["user_id"], entity, item_id, "delete", reason, target_title,
     )
     db.commit()
+
+    # Members otherwise lose the group with zero warning — mirrors the
+    # notification a leader-initiated deletion already sends.
+    if entity == "group":
+        try:
+            create_group_notifications(
+                db, group_id=item.id, type="system",
+                title="Group removed by an admin",
+                message=f'"{target_title}" was removed by a platform admin' + (f": {reason}" if reason else "."),
+                link="/groups",
+            )
+        except Exception as e:  # pragma: no cover - notifications are best-effort
+            print(f"[admin-service] group-deletion notification failed: {e}")
 
     return {"message": f"{entity.capitalize()} deleted successfully", "log_id": str(entry.id)}
 
@@ -989,7 +1242,7 @@ async def moderation_restore(
 ):
     """Revert a soft-delete: make the item visible again and record the restore."""
     if entity not in _MODERATION_ENTITIES:
-        raise HTTPException(status_code=400, detail="Invalid entity. Use group, resource, or announcement.")
+        raise HTTPException(status_code=400, detail=f"Invalid entity. Use one of: {_MODERATION_ENTITY_LABEL}.")
 
     model, title_attr = _MODERATION_ENTITIES[entity]
     item = db.query(model).filter(model.id == item_id).first()
@@ -999,9 +1252,27 @@ async def moderation_restore(
         raise HTTPException(status_code=400, detail=f"{entity.capitalize()} is not currently deleted")
 
     target_title = getattr(item, title_attr, None)
+    deleted_at = item.deleted_at
     item.is_deleted = False
     item.deleted_at = None
     item.deleted_by = None
+
+    # Mirror of the delete cascade: bring back only the sessions that were
+    # hidden as part of *this* group's deletion. Matching on deleted_at keeps
+    # sessions an admin had deleted individually beforehand still deleted.
+    if entity == "group" and deleted_at is not None:
+        db.query(StudySession).filter(
+            StudySession.group_id == item.id,
+            StudySession.is_deleted == True,     # noqa: E712
+            StudySession.deleted_at == deleted_at,
+        ).update(
+            {
+                StudySession.is_deleted: False,
+                StudySession.deleted_at: None,
+                StudySession.deleted_by: None,
+            },
+            synchronize_session=False,
+        )
 
     entry = log_moderation(
         db, current_user["user_id"], entity, item_id, "restore", None, target_title,
@@ -1014,29 +1285,53 @@ async def moderation_restore(
 @app.get("/admin/moderation/audit-logs")
 async def moderation_audit_logs(
     limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    entity_type: Optional[str] = Query(None, description="Filter to group / resource / announcement / session"),
+    action: Optional[str] = Query(None, description="Filter to delete / restore"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
+    """Moderation history, newest first.
+
+    Paginated and filterable: the console used to infer "is this item still
+    deleted?" from an unpaginated 100-row window, so anything older than the
+    hundred most recent actions silently dropped out of reach. Restoring no
+    longer depends on this endpoint (the listings take an include_deleted
+    flag now), but pagination keeps the history itself complete.
+    """
+    q = db.query(ModerationLog)
+    if entity_type:
+        q = q.filter(ModerationLog.entity_type == entity_type)
+    if action:
+        q = q.filter(ModerationLog.action == action)
+
+    total = q.count()
     logs = (
-        db.query(ModerationLog)
-        .order_by(ModerationLog.created_at.desc())
+        q.order_by(ModerationLog.created_at.desc())
+        .offset(offset)
         .limit(limit)
         .all()
     )
-    return [
-        {
-            "id": str(e.id),
-            "admin_id": str(e.admin_id),
-            "admin_name": _user_name(db, e.admin_id),
-            "entity_type": e.entity_type,
-            "entity_id": e.entity_id,
-            "action": e.action,
-            "reason": e.reason,
-            "target_title": e.target_title,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-        }
-        for e in logs
-    ]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "logs": [
+            {
+                "id": str(e.id),
+                "admin_id": str(e.admin_id),
+                "admin_name": _user_name(db, e.admin_id),
+                "actor_role": e.actor_role or "admin",
+                "entity_type": e.entity_type,
+                "entity_id": e.entity_id,
+                "action": e.action,
+                "reason": e.reason,
+                "target_title": e.target_title,
+                "created_at": iso_utc(e.created_at),
+            }
+            for e in logs
+        ],
+    }
 
 
 # ============================================================================

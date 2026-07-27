@@ -1,0 +1,1026 @@
+[
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1011",
+  "course_name": "Computational Thinking through Mechatronics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1012",
+  "course_name": "Net-centric Introduction to Computing",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1021",
+  "course_name": "Object Oriented Programming from Sensors to Actuators",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1022",
+  "course_name": "Programming for Mobile Computing",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1520",
+  "course_name": "Computer Use: Fundamentals",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1530",
+  "course_name": "Computer Use: Programming",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1541",
+  "course_name": "Introduction to Computing for the Physical Sciences",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 1720",
+  "course_name": "Building Interactive Systems",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2001",
+  "course_name": "Introduction to the Theory of Computation",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2011",
+  "course_name": "Fundamentals of Data Structures",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2021",
+  "course_name": "Computer Organization",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2030",
+  "course_name": "Advanced Object Oriented Programming",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2031",
+  "course_name": "Software Tools",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2200",
+  "course_name": "Electrical Circuits",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2210",
+  "course_name": "Electronic Circuits and Devices",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 2311",
+  "course_name": "Software Development Project",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3000",
+  "course_name": "Professional Practice in Computing",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3101",
+  "course_name": "Design and Analysis of Algorithms",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3121",
+  "course_name": "Introduction to Numerical Computations I",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3201",
+  "course_name": "Digital Logic Design",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3213",
+  "course_name": "Communication Networks",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3214",
+  "course_name": "Computer Network Protocols and Applications",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3215",
+  "course_name": "Embedded Systems",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3221",
+  "course_name": "Operating System Fundamentals",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3311",
+  "course_name": "Software Design",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3401",
+  "course_name": "Introduction to Artificial Intelligence and Logic Programming",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3421",
+  "course_name": "Introduction to Database Systems",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3431",
+  "course_name": "Introduction to 3D Computer Graphics",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3451",
+  "course_name": "Signals and Systems",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3461",
+  "course_name": "User Interfaces",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3481",
+  "course_name": "Applied Cryptography",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 3482",
+  "course_name": "Introduction to Computer Security",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4088",
+  "course_name": "Computer Science Capstone Project",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4090",
+  "course_name": "Software Development Capstone Project",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4101",
+  "course_name": "Advanced Data Structures",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4115",
+  "course_name": "Computational Complexity",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4201",
+  "course_name": "Computer Architecture",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4301",
+  "course_name": "Programming Language Design",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4312",
+  "course_name": "Software Engineering Requirements",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4313",
+  "course_name": "Software Engineering Testing",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4314",
+  "course_name": "Advanced Software Engineering",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4315",
+  "course_name": "Mission-Critical Systems",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4401",
+  "course_name": "Artificial Intelligence",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4404",
+  "course_name": "Introduction to Machine Learning and Pattern Recognition",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4411",
+  "course_name": "Database Management Systems",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4412",
+  "course_name": "Data Mining",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4413",
+  "course_name": "Building E-Commerce Systems",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4415",
+  "course_name": "Big Data Systems",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4421",
+  "course_name": "Introduction to Robotics",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4422",
+  "course_name": "Computer Vision",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4443",
+  "course_name": "Mobile User Interfaces",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4481",
+  "course_name": "Computer Security Laboratory",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "EECS",
+  "course_code": "EECS 4482",
+  "course_name": "Computer Security Management: Assessment and Forensics",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 1101",
+  "course_name": "Renaissance Engineer 1: Engineering, Design and Communication in Society",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 1102",
+  "course_name": "Renaissance Engineer 2: Engineering Design Principles",
+  "year_level": 1
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 2001",
+  "course_name": "Engineering Projects: Management, Economics and Safety",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 2003",
+  "course_name": "Effective Engineering Communication",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 3000",
+  "course_name": "Professional Engineering Practice",
+  "year_level": 3
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ENG",
+  "course_code": "ENG 4000",
+  "course_name": "Engineering Project",
+  "year_level": 4
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "MECH",
+  "course_code": "MECH 2201",
+  "course_name": "Introduction to Mechanical Engineering Thermodynamics",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "MECH",
+  "course_code": "MECH 2301",
+  "course_name": "Mechanics of Materials",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "CIVL",
+  "course_code": "CIVL 2210",
+  "course_name": "Civil Engineering Materials",
+  "year_level": 2
+ },
+ {
+  "faculty": "Lassonde School of Engineering",
+  "faculty_code": "LE",
+  "department": "ESSE",
+  "course_code": "ESSE 1012",
+  "course_name": "The Earth Environment",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1013",
+  "course_name": "Applied Calculus I",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1014",
+  "course_name": "Applied Calculus II",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1019",
+  "course_name": "Discrete Mathematics for Computer Science",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1021",
+  "course_name": "Linear Algebra I",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1025",
+  "course_name": "Applied Linear Algebra",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1090",
+  "course_name": "Introduction to Logic for Computer Science",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1131",
+  "course_name": "Introduction to Statistics I",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1190",
+  "course_name": "Introduction to Sets and Logic",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1200",
+  "course_name": "Problems, Conjectures and Proofs",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1300",
+  "course_name": "Differential Calculus with Applications",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1310",
+  "course_name": "Integral Calculus with Applications",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 1505",
+  "course_name": "Mathematics for the Life and Social Sciences",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2015",
+  "course_name": "Applied Multivariate and Vector Calculus",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2022",
+  "course_name": "Linear Algebra II",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2030",
+  "course_name": "Elementary Probability",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2270",
+  "course_name": "Differential Equations",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2310",
+  "course_name": "Calculus of Several Variables with Applications",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2320",
+  "course_name": "Discrete Mathematical Structures",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "MATH",
+  "course_code": "MATH 2565",
+  "course_name": "Introduction to Applied Statistics",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "PHYS",
+  "course_code": "PHYS 1010",
+  "course_name": "Physics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "PHYS",
+  "course_code": "PHYS 1800",
+  "course_name": "Engineering Mechanics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "PHYS",
+  "course_code": "PHYS 1801",
+  "course_name": "Electricity, Magnetism and Optics for Engineers",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "CHEM",
+  "course_code": "CHEM 1000",
+  "course_name": "Chemical Structure",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "CHEM",
+  "course_code": "CHEM 1001",
+  "course_name": "Chemical Dynamics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "BIOL",
+  "course_code": "BIOL 1000",
+  "course_name": "Biology I: Cells, Molecular Biology and Genetics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "BIOL",
+  "course_code": "BIOL 1001",
+  "course_name": "Biology II: Evolution, Ecology, Biodiversity and Conservation Biology",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "BIOL",
+  "course_code": "BIOL 2020",
+  "course_name": "Biochemistry",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "BIOL",
+  "course_code": "BIOL 2040",
+  "course_name": "Genetics",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "NATS",
+  "course_code": "NATS 1610",
+  "course_name": "The Living Body",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "NATS",
+  "course_code": "NATS 1745",
+  "course_name": "History of Astronomy",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Science",
+  "faculty_code": "SC",
+  "department": "NATS",
+  "course_code": "NATS 1775",
+  "course_name": "Technology and Civilization",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ITEC",
+  "course_code": "ITEC 1000",
+  "course_name": "Introduction to Information Technologies",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ITEC",
+  "course_code": "ITEC 1010",
+  "course_name": "Information and Organizations",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ITEC",
+  "course_code": "ITEC 2610",
+  "course_name": "Object-Oriented Programming",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ITEC",
+  "course_code": "ITEC 2620",
+  "course_name": "Introduction to Data Structures",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ITEC",
+  "course_code": "ITEC 3010",
+  "course_name": "Systems Analysis and Design I",
+  "year_level": 3
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 1000",
+  "course_name": "Introduction to Business",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 2320",
+  "course_name": "Quantitative Methods I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 2400",
+  "course_name": "Introduction to Organizational Behaviour",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 2500",
+  "course_name": "Introduction to Financial Accounting",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 2511",
+  "course_name": "Management Information Systems",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ADMS",
+  "course_code": "ADMS 2610",
+  "course_name": "Elements of Law: Part I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ECON",
+  "course_code": "ECON 1000",
+  "course_name": "Introduction to Microeconomics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ECON",
+  "course_code": "ECON 1010",
+  "course_name": "Introduction to Macroeconomics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ECON",
+  "course_code": "ECON 2300",
+  "course_name": "Intermediate Microeconomic Theory I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ECON",
+  "course_code": "ECON 2400",
+  "course_name": "Intermediate Macroeconomic Theory I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "ECON",
+  "course_code": "ECON 2500",
+  "course_name": "Introductory Statistics for Economists I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "POLS",
+  "course_code": "POLS 1000",
+  "course_name": "Introduction to Politics",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "SOCI",
+  "course_code": "SOCI 1010",
+  "course_name": "Introduction to Sociology",
+  "year_level": 1
+ },
+ {
+  "faculty": "Liberal Arts & Professional Studies",
+  "faculty_code": "AP",
+  "department": "PHIL",
+  "course_code": "PHIL 1100",
+  "course_name": "The Meaning of Life",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 1010",
+  "course_name": "Introduction to Psychology",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2021",
+  "course_name": "Statistical Methods I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2030",
+  "course_name": "Introduction to Research Methods",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2110",
+  "course_name": "Developmental Psychology",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2120",
+  "course_name": "Social Psychology",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2130",
+  "course_name": "Personality",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 2240",
+  "course_name": "Biological Basis of Behaviour",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "PSYC",
+  "course_code": "PSYC 3140",
+  "course_name": "Abnormal Psychology",
+  "year_level": 3
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 1000",
+  "course_name": "Sociocultural Perspectives in Kinesiology",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 1020",
+  "course_name": "Fitness and Health",
+  "year_level": 1
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 2011",
+  "course_name": "Human Physiology I",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 2031",
+  "course_name": "Human Anatomy",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 2049",
+  "course_name": "Research Methods in Kinesiology",
+  "year_level": 2
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "KINE",
+  "course_code": "KINE 3012",
+  "course_name": "Human Physiology II",
+  "year_level": 3
+ },
+ {
+  "faculty": "Faculty of Health",
+  "faculty_code": "HH",
+  "department": "HLST",
+  "course_code": "HLST 1010",
+  "course_name": "Foundations of Health Studies I",
+  "year_level": 1
+ }
+]

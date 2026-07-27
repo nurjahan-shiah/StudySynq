@@ -7,7 +7,6 @@ services:
 
   db:
     image: postgres:16
-    platform: linux/arm64
     container_name: studysynq-db
     environment:
       POSTGRES_DB: studysynq
@@ -317,6 +316,28 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       LOG_LEVEL: info
       SERVICE_PORT: 8011
+    volumes:
+      - ./shared:/shared:ro
+    networks:
+      - studysynq-network
+    restart: unless-stopped
+
+  # Social Service (Port 8012) — dashboard feed, comments, likes, friends
+  social-service:
+    build:
+      context: .
+      dockerfile: services/social-service/Dockerfile
+    container_name: studysynq-social
+    ports:
+      - "8012:8012"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:secret@db:5432/studysynq
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      LOG_LEVEL: info
+      SERVICE_PORT: 8012
     volumes:
       - ./shared:/shared:ro
     networks:

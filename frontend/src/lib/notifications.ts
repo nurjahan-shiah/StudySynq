@@ -5,11 +5,13 @@ export const NOTIFICATION_TYPE_META: Record<
   NotificationType,
   { label: string; icon: string; color: string }
 > = {
-  session:      { label: "Session",      icon: "▦", color: "var(--ss-blue)" },
-  announcement: { label: "Announcement", icon: "📢", color: "var(--ss-yellow)" },
-  task:         { label: "Task",         icon: "✓", color: "var(--ss-green)" },
-  resource:     { label: "Resource",     icon: "⊟", color: "var(--ss-red)" },
-  system:       { label: "System",       icon: "⚙", color: "var(--text2)" },
+  session:        { label: "Session",      icon: "▦", color: "var(--ss-blue)" },
+  announcement:   { label: "Announcement", icon: "📢", color: "var(--ss-yellow)" },
+  task:           { label: "Task",         icon: "✓", color: "var(--ss-green)" },
+  resource:       { label: "Resource",     icon: "⊟", color: "var(--ss-red)" },
+  group_activity: { label: "Group",        icon: "⚇", color: "var(--ss-blue)" },
+  social:         { label: "Campus feed",  icon: "◈", color: "var(--ss-yellow)" },
+  system:         { label: "System",       icon: "⚙", color: "var(--text2)" },
 };
 
 /** Short relative timestamp, e.g. "just now", "5m ago", "3h ago", "2d ago". */

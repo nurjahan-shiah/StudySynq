@@ -11,10 +11,11 @@ import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
-import { useGroup, useGroupMembers } from "@/lib/hooks";
+import { useGroup, useGroupMembers, type Course } from "@/lib/hooks";
 import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
+import { GroupSessionsCalendar } from "@/app/components/GroupSessionsCalendar";
 
 const T = {
   bg:     "var(--bg)",
@@ -26,7 +27,51 @@ const T = {
   red:    "var(--ss-red)",
 } as const;
 
-type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members";
+// In-app replacement for window.confirm() — matches the modal used for
+// session cancellation so destructive group actions get the same treatment.
+type PendingAction =
+  | { type: "remove"; memberId: string; memberName: string }
+  | { type: "transfer"; memberId: string; memberName: string }
+  | { type: "delete" };
+
+function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onConfirm }: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 420, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>{title}</h2>
+        <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.6 }}>{message}</p>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} disabled={busy} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}>Cancel</button>
+          <button onClick={onConfirm} disabled={busy} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1,
+          }}>{busy ? "Working…" : confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
   { id: "announcements", label: "Announcements" },
@@ -49,6 +94,16 @@ export default function GroupDetailPage() {
   const [memberStatus, setMemberStatus] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editCourseIds, setEditCourseIds] = useState<string[]>([]);
+  const [editIsPublic, setEditIsPublic] = useState(true);
+  const [editSession, setEditSession] = useState("");
+  const [editSection, setEditSection] = useState("");
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [groupAction, setGroupAction] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -60,12 +115,38 @@ export default function GroupDetailPage() {
     if (t && TABS.some((x) => x.id === t)) setTab(t);
   }, [router]);
 
-  const { data: group, loading: groupLoading } = useGroup(groupId);
+  const { data: group, loading: groupLoading, refetch: refetchGroup } = useGroup(groupId);
   const { data: members, refetch: refetchMembers } = useGroupMembers(groupId);
 
   const me = (members ?? []).find((m) => m.user_id === userId);
+  const isOwner = Boolean(group && userId && group.created_by === userId);
   const isLeader = me?.membership_role === "leader" || isAdmin;
-  const canManageMembers = me?.membership_role === "leader";
+  const canManage = isOwner || isLeader;
+  const canManageMembers = canManage;
+  const visibleTabs = canManage ? [...TABS, { id: "manage" as Tab, label: "Manage" }] : TABS;
+
+  useEffect(() => {
+    if (!canManage) return;
+    apiClient.get<Course[]>("/courses").then((res) => {
+      if (!res.error) setCourses(res.data ?? []);
+    });
+  }, [canManage]);
+
+  useEffect(() => {
+    if (!group) return;
+    setEditName(group.name);
+    setEditDescription(group.description ?? "");
+    setEditIsPublic(group.is_public);
+    setEditSession(group.session ?? "");
+    setEditSection(group.section ?? "");
+  }, [group]);
+
+  useEffect(() => {
+    if (!group || courses.length === 0) return;
+    setEditCourseIds(
+      courses.filter((course) => group.course_codes.includes(course.course_code)).map((course) => course.id)
+    );
+  }, [group, courses]);
 
 
 
@@ -106,21 +187,21 @@ export default function GroupDetailPage() {
       return;
     }
 
-    if (!confirm(`Remove ${memberName} from this group?`)) return;
-
     setMemberActionId(memberId);
     setMemberError("");
     setMemberStatus("");
 
     try {
-      await apiClient.delete(`/groups/${groupId}/members/${memberId}`);
+      const res = await apiClient.delete(`/groups/${groupId}/members/${memberId}`);
+      if (res.error) throw new Error(res.error);
       setMemberStatus(`${memberName} was removed from the group.`);
-      refetchMembers();
+      await Promise.all([refetchMembers(), refetchGroup()]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to remove member.";
       setMemberError(message);
     } finally {
       setMemberActionId("");
+      setPendingAction(null);
     }
   }
 
@@ -137,17 +218,89 @@ export default function GroupDetailPage() {
     setMemberStatus("");
 
     try {
-      await apiClient.patch(`/groups/${groupId}/members/${memberId}/role`, {
+      const res = await apiClient.patch(`/groups/${groupId}/members/${memberId}/role`, {
         membership_role: nextRole,
       });
+      if (res.error) throw new Error(res.error);
       setMemberStatus(`${memberName} is now a ${nextRole}.`);
-      refetchMembers();
+      await refetchMembers();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update member role.";
       setMemberError(message);
     } finally {
       setMemberActionId("");
     }
+  }
+
+  async function saveGroupDetails() {
+    if (!canManage || !editName.trim()) {
+      setMemberError("Group name is required.");
+      return;
+    }
+    if (editCourseIds.length === 0) {
+      setMemberError("Select at least one linked course.");
+      return;
+    }
+
+    if (editSession && !/^(F|W|SU|Y)\d{2}$/i.test(editSession.trim())) {
+      setMemberError("Session must look like F25, W26, SU26, or Y25.");
+      return;
+    }
+
+    setSavingGroup(true);
+    setMemberError("");
+    setMemberStatus("");
+    const res = await apiClient.put(`/groups/${groupId}`, {
+      name: editName.trim(),
+      description: editDescription.trim(),
+      is_public: editIsPublic,
+      session: editSession.trim().toUpperCase(),
+      section: editSection.trim().toUpperCase(),
+      course_ids: editCourseIds,
+    });
+    setSavingGroup(false);
+
+    if (res.error) {
+      setMemberError(res.error);
+      return;
+    }
+    await refetchGroup();
+    setMemberStatus("Group details were updated.");
+  }
+
+  async function transferOwnership(memberId: string, memberName: string) {
+    if (!isOwner) return;
+
+    setMemberActionId(memberId);
+    setMemberError("");
+    setMemberStatus("");
+    const res = await apiClient.post(`/groups/${groupId}/transfer-ownership`, {
+      new_owner_id: memberId,
+    });
+    setMemberActionId("");
+    setPendingAction(null);
+
+    if (res.error) {
+      setMemberError(res.error);
+      return;
+    }
+    await Promise.all([refetchGroup(), refetchMembers()]);
+    setMemberStatus(`${memberName} is now the group owner. You remain a leader.`);
+  }
+
+  async function deleteCurrentGroup() {
+    if (!isOwner || !group) return;
+
+    setGroupAction("delete");
+    setMemberError("");
+    const res = await apiClient.delete(`/groups/${groupId}`);
+    if (res.error) {
+      setMemberError(res.error);
+      setGroupAction("");
+      setPendingAction(null);
+      return;
+    }
+    router.push("/groups");
   }
 
   return (
@@ -176,7 +329,7 @@ export default function GroupDetailPage() {
 
         {/* Tab bar */}
         <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${T.border}`, marginBottom: 20 }}>
-          {TABS.map((t) => {
+          {visibleTabs.map((t) => {
             const active = tab === t.id;
             return (
               <button
@@ -198,17 +351,73 @@ export default function GroupDetailPage() {
 
         {/* Tab content */}
         {tab === "overview" && (
-          <div style={{ maxWidth: 640 }}>
+          <div style={{ maxWidth: 760 }}>
             <p style={{ fontSize: 14, color: T.text, margin: "0 0 14px", lineHeight: 1.6 }}>
               {group?.description || "No description provided."}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Stat label="Members" value={group?.member_count ?? (members?.length ?? 0)} />
               <Stat label="Visibility" value={group?.is_public ? "Public" : "Private"} />
-              {group?.course_codes && group.course_codes.length > 0 && (
-                <Stat label="Courses" value={group.course_codes.join(", ")} />
-              )}
+              {group?.session && <Stat label="Session" value={group.session} />}
+              {group?.section && <Stat label="Section" value={group.section} />}
             </div>
+
+            <section style={{
+              marginTop: 18,
+              padding: 16,
+              background: T.card,
+              border: `1px solid ${T.border}`,
+              borderRadius: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+                <span aria-hidden="true" style={{
+                  width: 32, height: 32, borderRadius: 9, display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  background: `color-mix(in srgb, ${T.red} 9%, transparent)`,
+                  color: T.red, fontSize: 15,
+                }}>▤</span>
+                <div>
+                  <h2 style={{ fontSize: 13, fontWeight: 700, color: T.text, margin: 0 }}>Linked courses</h2>
+                </div>
+              </div>
+
+              {group?.course_codes && group.course_codes.length > 0 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(group.courses ?? group.course_codes.map((courseCode) => ({
+                    id: courseCode,
+                    course_code: courseCode,
+                    course_name: "",
+                    department: "",
+                  }))).map((course) => (
+                    <span key={course.id} style={{
+                      display: "inline-flex", alignItems: "center", gap: 9,
+                      padding: "9px 12px", borderRadius: 9,
+                      background: T.bg3, border: `1px solid ${T.border}`,
+                    }}>
+                      <span style={{
+                        padding: "3px 9px", borderRadius: 20,
+                        background: `color-mix(in srgb, ${T.red} 9%, transparent)`,
+                        color: T.red, fontSize: 11, fontWeight: 700,
+                      }}>
+                        {course.course_code}
+                      </span>
+                      <span>
+                        <strong style={{ display: "block", color: T.text, fontSize: 12, fontWeight: 600 }}>
+                          {course.course_name || course.course_code}
+                        </strong>
+                        {course.department && (
+                          <span style={{ display: "block", color: T.text2, fontSize: 10.5, marginTop: 2 }}>
+                            {course.department}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>No courses are linked to this group.</p>
+              )}
+            </section>
           </div>
         )}
 
@@ -221,7 +430,7 @@ export default function GroupDetailPage() {
         )}
 
         {tab === "sessions" && (
-          <LinkOut icon="▦" label="Sessions live on the Sessions page." href="/sessions" router={router} />
+          <GroupSessionsCalendar groupId={groupId} />
         )}
 
         {tab === "resources" && (
@@ -305,6 +514,7 @@ export default function GroupDetailPage() {
             ) : (
               (members ?? []).map((m) => {
                 const isCurrentUser = m.user_id === userId;
+                const isGroupOwner = m.user_id === group?.created_by;
                 const busy = memberActionId === m.user_id;
                 const nextRole = m.membership_role === "leader" ? "member" : "leader";
 
@@ -334,13 +544,13 @@ export default function GroupDetailPage() {
                         borderRadius: 20,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
-                        background: m.membership_role === "leader" ? `${T.red}1a` : T.bg3,
+                        background: m.membership_role === "leader" ? `color-mix(in srgb, ${T.red} 10%, transparent)` : T.bg3,
                         color: m.membership_role === "leader" ? T.red : T.text2,
                       }}>
-                        {m.membership_role}
+                        {isGroupOwner ? "owner" : m.membership_role}
                       </span>
 
-                      {canManageMembers && !isCurrentUser && (
+                      {canManageMembers && !isCurrentUser && !isGroupOwner && (
                         <>
                           <button
                             onClick={() => changeMemberRole(m.user_id, m.user_name, nextRole)}
@@ -359,8 +569,27 @@ export default function GroupDetailPage() {
                             {busy ? "Working..." : nextRole === "leader" ? "Make leader" : "Make member"}
                           </button>
 
+                          {isOwner && (
+                            <button
+                              onClick={() => setPendingAction({ type: "transfer", memberId: m.user_id, memberName: m.user_name })}
+                              disabled={busy}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: 7,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                border: `1px solid ${T.red}`,
+                                background: `color-mix(in srgb, ${T.red} 7%, transparent)`,
+                                color: T.red,
+                                cursor: busy ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Transfer ownership
+                            </button>
+                          )}
+
                           <button
-                            onClick={() => removeGroupMember(m.user_id, m.user_name)}
+                            onClick={() => setPendingAction({ type: "remove", memberId: m.user_id, memberName: m.user_name })}
                             disabled={busy}
                             style={{
                               padding: "5px 9px",
@@ -385,39 +614,190 @@ export default function GroupDetailPage() {
           </div>
         )}
 
+        {tab === "manage" && canManage && (
+          <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
+            <section style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 18 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: "0 0 4px" }}>Edit group details</h2>
+              <p style={{ color: T.text2, fontSize: 12, margin: "0 0 18px" }}>
+                Owners and leaders can update these settings. Course changes are reflected in recommendations.
+              </p>
+
+              <label style={labelStyle}>Group name</label>
+              <input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                maxLength={255}
+                style={inputStyle}
+              />
+
+              <label style={labelStyle}>Description</label>
+              <textarea
+                value={editDescription}
+                onChange={(event) => setEditDescription(event.target.value)}
+                rows={4}
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+              />
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Session (e.g. SU26)</label>
+                  <input
+                    value={editSession}
+                    onChange={(event) => setEditSession(event.target.value)}
+                    placeholder="F25 / W26 / SU26"
+                    maxLength={4}
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Section (e.g. A)</label>
+                  <input
+                    value={editSection}
+                    onChange={(event) => setEditSection(event.target.value)}
+                    placeholder="A"
+                    maxLength={20}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <label style={labelStyle}>Linked course</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8, marginBottom: 16 }}>
+                {courses.map((course) => {
+                  const checked = editCourseIds.includes(course.id);
+                  return (
+                    <label key={course.id} style={{
+                      display: "flex", gap: 9, alignItems: "center", padding: "9px 11px",
+                      borderRadius: 8, border: `1px solid ${checked ? T.red : T.border}`,
+                      background: checked ? `color-mix(in srgb, ${T.red} 6%, transparent)` : T.bg3, color: T.text, fontSize: 12,
+                      cursor: "pointer",
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setEditCourseIds((current) =>
+                          checked ? current.filter((id) => id !== course.id) : [...current, course.id]
+                        )}
+                        style={{ accentColor: T.red }}
+                      />
+                      <span><strong>{course.course_code}</strong> — {course.course_name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 9, color: T.text, fontSize: 13, marginBottom: 18 }}>
+                <input
+                  type="checkbox"
+                  checked={editIsPublic}
+                  onChange={(event) => setEditIsPublic(event.target.checked)}
+                  style={{ accentColor: T.red }}
+                />
+                Public group
+              </label>
+
+              {memberStatus && <p style={{ fontSize: 13, color: T.text2, margin: "0 0 10px" }}>{memberStatus}</p>}
+              {memberError && <p style={{ fontSize: 13, color: T.red, margin: "0 0 10px" }}>{memberError}</p>}
+
+              <button
+                onClick={saveGroupDetails}
+                disabled={savingGroup}
+                style={{
+                  border: 0, borderRadius: 8, padding: "9px 16px", background: T.red,
+                  color: "white", fontSize: 12, fontWeight: 700,
+                  cursor: savingGroup ? "not-allowed" : "pointer", opacity: savingGroup ? 0.65 : 1,
+                }}
+              >
+                {savingGroup ? "Saving…" : "Save changes"}
+              </button>
+            </section>
+
+            {isOwner && (
+              <section style={{ background: T.card, border: `1px solid ${T.red}55`, borderRadius: 12, padding: 18 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: T.red, margin: "0 0 5px" }}>Delete group</h2>
+                <p style={{ color: T.text2, fontSize: 12, lineHeight: 1.5, margin: "0 0 14px" }}>
+                  Only the owner can delete this group. Members will no longer be able to access it.
+                </p>
+                <button
+                  onClick={() => setPendingAction({ type: "delete" })}
+                  disabled={groupAction === "delete"}
+                  style={{
+                    border: `1px solid ${T.red}`, borderRadius: 8, padding: "8px 14px",
+                    background: "transparent", color: T.red, fontSize: 12, fontWeight: 700,
+                    cursor: groupAction ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {groupAction === "delete" ? "Deleting…" : "Delete group"}
+                </button>
+              </section>
+            )}
+          </div>
+        )}
+
       </main>
+
+      {pendingAction?.type === "remove" && (
+        <ConfirmActionModal
+          title="Remove member"
+          message={`Remove ${pendingAction.memberName} from this group?`}
+          confirmLabel="Remove"
+          busy={memberActionId === pendingAction.memberId}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => removeGroupMember(pendingAction.memberId, pendingAction.memberName)}
+        />
+      )}
+
+      {pendingAction?.type === "transfer" && (
+        <ConfirmActionModal
+          title="Transfer ownership"
+          message={`Transfer ownership of this group to ${pendingAction.memberName}? You will remain a leader.`}
+          confirmLabel="Transfer ownership"
+          busy={memberActionId === pendingAction.memberId}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => transferOwnership(pendingAction.memberId, pendingAction.memberName)}
+        />
+      )}
+
+      {pendingAction?.type === "delete" && group && (
+        <ConfirmActionModal
+          title="Delete group"
+          message={`Delete "${group.name}"? Members will no longer be able to access this group.`}
+          confirmLabel="Delete group"
+          busy={groupAction === "delete"}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={deleteCurrentGroup}
+        />
+      )}
     </div>
   );
 }
+
+const labelStyle = {
+  display: "block",
+  color: T.text2,
+  fontSize: 11,
+  fontWeight: 700,
+  margin: "0 0 6px",
+} as const;
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  background: T.bg3,
+  border: `1px solid ${T.border}`,
+  borderRadius: 8,
+  padding: "9px 11px",
+  color: T.text,
+  fontSize: 13,
+  outline: "none",
+  marginBottom: 15,
+} as const;
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div style={{ background: T.bg3, borderRadius: 10, padding: "10px 14px", border: `1px solid ${T.border}` }}>
       <p style={{ fontSize: 10, color: T.text2, margin: "0 0 2px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</p>
       <p style={{ fontSize: 14, fontWeight: 700, color: T.text, margin: 0 }}>{value}</p>
-    </div>
-  );
-}
-
-function LinkOut({ icon, label, href, router }: {
-  icon: string; label: string; href: string; router: ReturnType<typeof useRouter>;
-}) {
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      height: 200, gap: 12, color: T.text2,
-    }}>
-      <span style={{ fontSize: 28 }}>{icon}</span>
-      <p style={{ fontSize: 14, margin: 0 }}>{label}</p>
-      <button
-        onClick={() => router.push(href)}
-        style={{
-          padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-          border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer",
-        }}
-      >
-        Open
-      </button>
     </div>
   );
 }

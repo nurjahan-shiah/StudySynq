@@ -9,6 +9,7 @@
 import { useState, CSSProperties } from "react";
 import { apiClient } from "@/lib/apiClient";
 import { useGroupAnnouncements, type Announcement } from "@/lib/hooks";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const T = {
   bg2:    "var(--bg2)",
@@ -66,6 +67,8 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
   const [aiDrafting, setAiDrafting] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiStatus, setAiStatus] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Announcement | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const announcements = data ?? [];
 
@@ -162,8 +165,10 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
   }
 
   async function remove(a: Announcement) {
-    if (!confirm(`Delete announcement "${a.title}"?`)) return;
+    setDeleting(true);
     await apiClient.delete(`/announcements/${a.id}`);
+    setDeleting(false);
+    setPendingDelete(null);
     refetch();
   }
 
@@ -304,7 +309,7 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
                     >
                       Edit
                     </button>
-                    <button onClick={() => remove(a)} style={{ ...smallBtn, color: T.red }}>Delete</button>
+                    <button onClick={() => setPendingDelete(a)} style={{ ...smallBtn, color: T.red }}>Delete</button>
                   </div>
                 )}
               </div>
@@ -317,6 +322,17 @@ export function AnnouncementBoard({ groupId, isLeader }: { groupId: string; isLe
             </div>
           ))}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete announcement"
+          message={`Delete announcement "${pendingDelete.title}"?`}
+          confirmLabel="Delete"
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => remove(pendingDelete)}
+        />
       )}
     </div>
   );

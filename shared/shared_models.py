@@ -31,6 +31,8 @@ class NotificationType(str, enum.Enum):
     ANNOUNCEMENT = "announcement"
     TASK = "task"
     RESOURCE = "resource"
+    GROUP_ACTIVITY = "group_activity"
+    SOCIAL = "social"
     SYSTEM = "system"
 
 # ============================================================================
@@ -46,6 +48,15 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole, native_enum=False), default=UserRole.STUDENT)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # ── Profile (Complete your profile) ──────────────────────────────────────
+    # New columns on an existing table: added at startup by
+    # shared_database.run_light_migrations (create_all never ALTERs).
+    major = Column(String(255), nullable=True)
+    year_of_study = Column(String(20), nullable=True)   # "1st year" … "5th year+"
+    bio = Column(Text, nullable=True)
+    # Per-field visibility chosen by the user, e.g.
+    # {"major": "public", "year_of_study": "public", "bio": "private", "email": "private"}
+    profile_privacy = Column(JSONB, nullable=True)
 
     # Relationships
     groups_created = relationship("Group", back_populates="creator", foreign_keys="Group.created_by")
@@ -63,6 +74,9 @@ class Course(Base):
     course_code = Column(String(50), unique=True, nullable=False, index=True)
     course_name = Column(String(255), nullable=False)
     department = Column(String(100), nullable=False)
+    # Catalogue identifiers (added via light migration):
+    faculty = Column(String(255), nullable=True)      # e.g. "Lassonde School of Engineering"
+    year_level = Column(Integer, nullable=True)       # 1-4 (5 = graduate), derived from the code
 
     # Relationships
     group_courses = relationship("GroupCourse", back_populates="course")
@@ -77,6 +91,10 @@ class Group(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     is_public = Column(Boolean, default=True)
     intended_major = Column(String(255), nullable=True)
+    # Term the group studies in, e.g. "SU26", and its section, e.g. "A" / "M"
+    # (added via light migration).
+    session = Column(String(10), nullable=True)
+    section = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     # US-F.2 moderation soft-delete
     is_deleted = Column(Boolean, default=False, nullable=False)
@@ -104,6 +122,12 @@ class StudySession(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_cancelled    = Column(Boolean, default=False)
+    # US-F.2 moderation soft-delete. Distinct from is_cancelled: a leader
+    # cancels a session (members still see it, struck through), an admin
+    # deletes it (nobody sees it).
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
     group = relationship("Group", back_populates="sessions")
@@ -315,3 +339,134 @@ class NotificationPreference(Base):
     is_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+# ============================================================================
+# Profile fields on User are added via light migration (shared_database.
+# run_light_migrations) since create_all never alters existing tables.
+# ============================================================================
+
+# ============================================================================
+# Course Requests (Courses tab: "request a course" -> admin approve/reject)
+# ============================================================================
+
+class CourseRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+class CourseRequest(Base):
+    """A student's request for a course that isn't in the catalogue yet.
+
+    Creating one notifies every admin. When an admin approves it, the course is
+    created and the requester is notified "request accepted"; on reject the
+    requester is notified "request rejected".
+    """
+    __tablename__ = "course_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    course_code = Column(String(50), nullable=False, index=True)
+    course_name = Column(String(255), nullable=False)
+    department = Column(String(100), nullable=False)
+    status = Column(String(20), default=CourseRequestStatus.PENDING.value, nullable=False, index=True)
+    reason = Column(Text, nullable=True)          # optional note from the student
+    admin_note = Column(Text, nullable=True)      # optional note on approve/reject
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolved_by = Column(UUID(as_uuid=True), nullable=True)
+
+# ============================================================================
+# Social feed (dashboard): posts, comments, likes, friendships
+# ============================================================================
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # Optional group tag: "posting from <group>"
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=True, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
+
+class PostComment(Base):
+    __tablename__ = "post_comments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
+class PostLike(Base):
+    __tablename__ = "post_likes"
+    __table_args__ = (
+        UniqueConstraint('post_id', 'user_id', name='unique_post_like'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class FriendshipStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    BLOCKED = "blocked"
+
+class Friendship(Base):
+    """Directed friend request: requester -> addressee. Accepted = friends.
+
+    A blocked row keeps the pair recorded but with status="blocked" and
+    blocked_by set to whoever initiated it. Because the row is directed but a
+    block is not, blocked_by is what tells the two sides apart: the blocker
+    can undo it, the blocked user just sees nothing.
+    """
+    __tablename__ = "friendships"
+    __table_args__ = (
+        UniqueConstraint('requester_id', 'addressee_id', name='unique_friend_pair'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    addressee_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String(20), default=FriendshipStatus.PENDING.value, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    accepted_at = Column(DateTime, nullable=True)
+    # Who performed the block (null unless status == "blocked").
+    blocked_by = Column(UUID(as_uuid=True), nullable=True)
+    blocked_at = Column(DateTime, nullable=True)
+
+# ============================================================================
+# Moderation audit trail (US-F.2)
+# ============================================================================
+
+class ModerationLog(Base):
+    """Record of a content moderation action.
+
+    Lives in shared/ rather than admin-service so that *any* service which
+    soft-deletes content can append to the same audit trail. In particular a
+    group leader deleting their own group writes here too, which is what
+    makes that deletion visible — and therefore restorable — from the admin
+    moderation console.
+
+    `action` is "delete" or "restore". `admin_id` is whoever performed it,
+    which is not necessarily an admin (a group leader deleting their own
+    group is recorded with their own id and actor_role="leader").
+    """
+    __tablename__ = "moderation_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    admin_id = Column(UUID(as_uuid=True), nullable=False)
+    entity_type = Column(String(20), nullable=False)   # group | resource | announcement | session
+    entity_id = Column(String(255), nullable=False)
+    action = Column(String(50), nullable=False, default="delete")
+    reason = Column(Text, nullable=True)
+    target_title = Column(String(255), nullable=True)
+    # Distinguishes an admin moderating someone else's content from an owner
+    # deleting their own. Nullable so pre-existing rows stay valid.
+    actor_role = Column(String(20), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

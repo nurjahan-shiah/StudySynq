@@ -87,6 +87,8 @@ export type NotificationType =
   | "announcement"
   | "task"
   | "resource"
+  | "group_activity"
+  | "social"
   | "system";
 
 export interface Notification {
@@ -113,6 +115,7 @@ export interface NotificationPreferences {
   tasks: boolean;
   resources: boolean;
   group_activity: boolean;
+  social: boolean;
 }
 
 // US-E.2 — Announcement Board

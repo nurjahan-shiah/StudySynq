@@ -11,6 +11,7 @@ import { useState } from "react";
 import { apiClient } from "@/lib/apiClient";
 import { useGroupResources, type Resource } from "@/lib/hooks";
 import { ResourceUpload } from "./ResourceUpload";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const T = {
   card:   "var(--card-bg)",
@@ -46,12 +47,13 @@ export function GroupResourcesPanel({
 }) {
   const { data: resources, loading, refetch } = useGroupResources(groupId);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Resource | null>(null);
 
   async function handleDelete(r: Resource) {
-    if (!confirm(`Delete "${r.file_name}"? This cannot be undone.`)) return;
     setDeletingId(r.id);
     const res = await apiClient.delete(`/resources/${r.id}`);
     setDeletingId(null);
+    setPendingDelete(null);
     if (!res.error) refetch();
   }
 
@@ -107,7 +109,7 @@ export function GroupResourcesPanel({
 
                 {canDelete && (
                   <button
-                    onClick={() => handleDelete(r)}
+                    onClick={() => setPendingDelete(r)}
                     disabled={deletingId === r.id}
                     style={{
                       padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
@@ -123,6 +125,17 @@ export function GroupResourcesPanel({
             );
           })}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete file"
+          message={`Delete "${pendingDelete.file_name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          busy={deletingId === pendingDelete.id}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => handleDelete(pendingDelete)}
+        />
       )}
     </div>
   );

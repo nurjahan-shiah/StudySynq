@@ -11,12 +11,28 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
+import { NotificationBell } from "@/app/components/NotificationBell";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const T = {
+  bg: "var(--bg)",
+  bg2: "var(--bg2)",
+  bg3: "var(--bg3)",
+  card: "var(--card-bg)",
+  border: "var(--border)",
+  text: "var(--text)",
+  text2: "var(--text2)",
+  red: "var(--ss-red)",
+  blue: "var(--ss-blue)",
+  green: "var(--ss-green)",
+} as const;
+
 function token() {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("token") || "";
+  return localStorage.getItem("ss_token") || "";
 }
 
 function authHeaders() {
@@ -42,7 +58,27 @@ interface AdminCourse {
   course_code: string;
   course_name: string;
   department: string;
+  faculty: string | null;
+  year_level: number | null;
 }
+
+const YORK_FACULTIES = [
+  "Lassonde School of Engineering",
+  "Faculty of Science",
+  "Liberal Arts & Professional Studies",
+  "Faculty of Health",
+  "Schulich School of Business",
+  "School of the Arts, Media, Performance & Design",
+  "Faculty of Education",
+  "Glendon College",
+  "Faculty of Environmental & Urban Change",
+];
+
+const deriveYearLevel = (code: string): number | "" => {
+  const m = code.trim().match(/\b(\d)\d{3}\b/);
+  return m ? Math.min(parseInt(m[1], 10), 5) : "";
+};
+
 
 interface Summary {
   total_users: number;
@@ -81,7 +117,9 @@ function rolePill(role: string) {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<Tab>("users");
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
+  const [tab, setTab] = useState<Tab>("courses");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
@@ -92,13 +130,31 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editingRole, setEditingRole] = useState<string | null>(null);
 
-  // Course create modal state
+  // Course create/edit modal state
   const [showCourseModal, setShowCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [newCourse, setNewCourse] = useState({
     course_code: "",
     course_name: "",
     department: "",
+    faculty: "",
+    year_level: "" as number | "",
   });
+
+  useEffect(() => {
+    const currentToken = localStorage.getItem("ss_token");
+    const currentRole = localStorage.getItem("ss_user_role");
+    if (!currentToken) {
+      router.replace("/login");
+      return;
+    }
+    if (currentRole !== "admin") {
+      router.replace("/dashboard");
+      return;
+    }
+    setAuthorized(true);
+  }, [router]);
 
   // ── data fetching ─────────────────────────────────────────────────────────
 
@@ -108,11 +164,13 @@ export default function AdminDashboard() {
   };
 
   const fetchSummary = useCallback(async () => {
+    if (!authorized) return;
     const r = await fetch(`${API}/admin/dashboard`, { headers: authHeaders() });
     if (r.ok) setSummary(await r.json());
-  }, []);
+  }, [authorized]);
 
   const fetchUsers = useCallback(async () => {
+    if (!authorized) return;
     setLoading(true);
     const params = new URLSearchParams();
     if (userSearch) params.set("search", userSearch);
@@ -120,16 +178,17 @@ export default function AdminDashboard() {
     const r = await fetch(`${API}/admin/users?${params}`, { headers: authHeaders() });
     if (r.ok) setUsers(await r.json());
     setLoading(false);
-  }, [userSearch, roleFilter]);
+  }, [authorized, userSearch, roleFilter]);
 
   const fetchCourses = useCallback(async () => {
+    if (!authorized) return;
     setLoading(true);
     const params = new URLSearchParams();
     if (courseSearch) params.set("search", courseSearch);
     const r = await fetch(`${API}/admin/courses?${params}`, { headers: authHeaders() });
     if (r.ok) setCourses(await r.json());
     setLoading(false);
-  }, [courseSearch]);
+  }, [authorized, courseSearch]);
 
   // US-F.1 — CSV export for oversight/reporting
   const exportCsv = useCallback(async (kind: "users" | "courses") => {
@@ -147,6 +206,8 @@ export default function AdminDashboard() {
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   useEffect(() => { if (tab === "courses") fetchCourses(); }, [tab, fetchCourses]);
+
+  if (!authorized) return null;
 
   // ── user actions ──────────────────────────────────────────────────────────
 
@@ -200,34 +261,88 @@ export default function AdminDashboard() {
     }
   }
 
-  async function createCourse() {
-    const r = await fetch(`${API}/admin/courses`, {
-      method: "POST",
+  function resetCourseForm() {
+    setShowCourseModal(false);
+    setEditingCourse(null);
+    setNewCourse({ course_code: "", course_name: "", department: "", faculty: "", year_level: "" });
+  }
+
+  async function saveCourse() {
+    const payload = {
+      course_code: newCourse.course_code,
+      course_name: newCourse.course_name,
+      department: newCourse.department,
+      faculty: newCourse.faculty || null,
+      year_level: newCourse.year_level === "" ? deriveYearLevel(newCourse.course_code) || null : newCourse.year_level,
+    };
+    const url = editingCourse ? `${API}/admin/courses/${editingCourse.id}` : `${API}/admin/courses`;
+    const r = await fetch(url, {
+      method: editingCourse ? "PUT" : "POST",
       headers: authHeaders(),
-      body: JSON.stringify(newCourse),
+      body: JSON.stringify(payload),
     });
     if (r.ok) {
-      showToast(`${newCourse.course_code} created`);
-      setShowCourseModal(false);
-      setNewCourse({ course_code: "", course_name: "", department: "" });
+      showToast(`${newCourse.course_code} ${editingCourse ? "updated" : "created"}`);
+      resetCourseForm();
       fetchCourses();
       fetchSummary();
     } else {
       const err = await r.json();
-      showToast(err.detail ?? "Failed", false);
+      showToast(typeof err.detail === "string" ? err.detail : "Validation failed — check the York code format", false);
+    }
+  }
+
+  function openEdit(c: AdminCourse) {
+    setEditingCourse(c);
+    setNewCourse({
+      course_code: c.course_code,
+      course_name: c.course_name,
+      department: c.department,
+      faculty: c.faculty ?? "",
+      year_level: c.year_level ?? "",
+    });
+    setShowCourseModal(true);
+  }
+
+  // One-click import of the bundled York catalogue seed (faculty, code, name,
+  // year level). Existing codes are skipped — never overwrites admin edits.
+  async function seedCatalogue() {
+    if (!confirm("Import the bundled York course catalogue? Existing courses are never modified.")) return;
+    setSeeding(true);
+    try {
+      const r = await fetch(`${API}/admin/courses/seed`, { method: "POST", headers: authHeaders() });
+      let body: any = null;
+      try {
+        body = await r.json();
+      } catch {
+        // Non-JSON response (e.g. a platform 502/504 HTML page) — body stays null.
+      }
+      if (r.ok && body) {
+        showToast(`York catalogue: ${body.added} added, ${body.skipped} already present`);
+        fetchCourses();
+        fetchSummary();
+      } else {
+        showToast(body?.detail ?? `Seed failed (HTTP ${r.status})`, false);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Seed request failed — check your connection", false);
+    } finally {
+      setSeeding(false);
     }
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f9f9f7", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
+      <div className="ss-stripe-bar" />
+      <Sidebar />
 
       {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed", top: 20, right: 20, zIndex: 9999,
-          background: toast.ok ? "#16a34a" : "#dc2626",
+          background: toast.ok ? T.green : T.red,
           color: "#fff", padding: "10px 18px", borderRadius: 8,
           fontSize: 13, fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,.15)",
           transition: "opacity .2s",
@@ -236,43 +351,50 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Header */}
-      <header style={{
-        background: "#fff", borderBottom: "1px solid #e5e5e2",
-        padding: "0 32px", display: "flex", alignItems: "center",
-        height: 56, gap: 12,
-      }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8, background: "#dbeafe",
-          color: "#1d4ed8", display: "flex", alignItems: "center",
-          justifyContent: "center", fontWeight: 700, fontSize: 14,
-        }}>S</div>
-        <span style={{ fontWeight: 600, fontSize: 15, color: "#111" }}>StudySynq</span>
-        <span style={{ color: "#9ca3af", fontSize: 13, marginLeft: 4 }}>/</span>
-        <span style={{ fontSize: 13, color: "#6b7280" }}>Admin Console</span>
-        <div style={{ flex: 1 }} />
-        <span style={{
-          background: "#fee2e2", color: "#b91c1c",
-          padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-        }}>Admin</span>
-      </header>
-
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
+      <main className="ss-admin-main" style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
+        <div className="ss-admin-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
+          <div>
+            <h1 style={{ fontSize: 17, fontWeight: 700, color: T.text, margin: 0 }}>
+              Admin course management
+            </h1>
+            <p style={{ fontSize: 12.5, color: T.text2, margin: "4px 0 0" }}>
+              Manage the course catalogue available to students and study groups.
+            </p>
+          </div>
+          <div className="ss-admin-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              className="ss-btn-ghost"
+              onClick={() => router.push("/admin/health")}
+              aria-label="Open system health dashboard"
+              style={{ gap: 7, padding: "7px 13px", fontSize: 12.5, fontWeight: 600 }}
+            >
+              <span aria-hidden="true" style={{ color: T.red }}>◉</span>
+              Health
+            </button>
+            <span style={{
+              background: `${T.red}1a`, color: T.red,
+              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+            }}>Admin</span>
+            <NotificationBell />
+            <ProfileButton />
+          </div>
+        </div>
 
         {/* Summary cards */}
         {summary && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 28 }}>
+          <div className="ss-admin-summary" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 28 }}>
             {[
-              { label: "Total users", value: summary.total_users, color: "#1d4ed8", bg: "#dbeafe" },
-              { label: "Active users", value: summary.active_users, color: "#16a34a", bg: "#dcfce7" },
-              { label: "Deactivated", value: summary.deactivated_users, color: "#b91c1c", bg: "#fee2e2" },
-              { label: "Courses", value: summary.total_courses, color: "#7c3aed", bg: "#ede9fe" },
+              { label: "Total users", value: summary.total_users, color: T.blue },
+              { label: "Active users", value: summary.active_users, color: T.green },
+              { label: "Deactivated", value: summary.deactivated_users, color: T.red },
+              { label: "Courses", value: summary.total_courses, color: T.text },
             ].map((s) => (
               <div key={s.label} style={{
-                background: "#fff", borderRadius: 10, padding: "16px 20px",
-                border: "1px solid #e5e5e2",
+                background: T.card, borderRadius: 12, padding: "16px 20px",
+                border: `1px solid ${T.border}`,
               }}>
-                <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 500, marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: T.text2, fontWeight: 500, marginBottom: 6 }}>
                   {s.label}
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: s.color }}>
@@ -292,8 +414,8 @@ export default function AdminDashboard() {
               style={{
                 padding: "7px 18px", borderRadius: 7, border: "none",
                 fontSize: 13, fontWeight: 500, cursor: "pointer",
-                background: tab === t ? "#1d4ed8" : "transparent",
-                color: tab === t ? "#fff" : "#6b7280",
+                background: tab === t ? T.red : "transparent",
+                color: tab === t ? "#fff" : T.text2,
               }}
             >
               {t === "users" ? "👥 Users" : "🎓 Courses"}
@@ -303,10 +425,10 @@ export default function AdminDashboard() {
 
         {/* ── Users tab ── */}
         {tab === "users" && (
-          <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e5e2" }}>
+          <div style={{ background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
             {/* Toolbar */}
-            <div style={{
-              padding: "14px 18px", borderBottom: "1px solid #e5e5e2",
+            <div className="ss-admin-toolbar" style={{
+              padding: "14px 18px", borderBottom: `1px solid ${T.border}`,
               display: "flex", gap: 10, alignItems: "center",
             }}>
               <input
@@ -315,15 +437,16 @@ export default function AdminDashboard() {
                 onChange={(e) => setUserSearch(e.target.value)}
                 style={{
                   flex: 1, padding: "7px 12px", borderRadius: 7,
-                  border: "1px solid #d1d5db", fontSize: 13, outline: "none",
+                  border: `1px solid ${T.border}`, background: T.bg3,
+                  color: T.text, fontSize: 13, outline: "none",
                 }}
               />
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
                 style={{
-                  padding: "7px 12px", borderRadius: 7, border: "1px solid #d1d5db",
-                  fontSize: 13, background: "#fff", cursor: "pointer",
+                  padding: "7px 12px", borderRadius: 7, border: `1px solid ${T.border}`,
+                  fontSize: 13, background: T.bg3, color: T.text, cursor: "pointer",
                 }}
               >
                 <option value="all">All roles</option>
@@ -334,9 +457,9 @@ export default function AdminDashboard() {
                 onClick={() => exportCsv("users")}
                 title="Download as CSV"
                 style={{
-                  padding: "7px 14px", borderRadius: 7, border: "1px solid #d1d5db",
+                  padding: "7px 14px", borderRadius: 7, border: `1px solid ${T.border}`,
                   fontSize: 13, fontWeight: 500, cursor: "pointer",
-                  background: "#fff", color: "#374151", whiteSpace: "nowrap",
+                  background: "transparent", color: T.text2, whiteSpace: "nowrap",
                 }}
               >
                 ⬇ Export CSV
@@ -345,23 +468,24 @@ export default function AdminDashboard() {
 
             {/* Table */}
             {loading ? (
-              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              <div style={{ padding: 32, textAlign: "center", color: T.text2, fontSize: 13 }}>
                 Loading…
               </div>
             ) : users.length === 0 ? (
-              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              <div style={{ padding: 32, textAlign: "center", color: T.text2, fontSize: 13 }}>
                 No users found
               </div>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="ss-admin-table-scroll">
+              <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ background: "#f9fafb" }}>
+                  <tr style={{ background: T.bg3 }}>
                     {["Name", "Email", "Role", "Status", "Joined", "Actions"].map((h) => (
                       <th key={h} style={{
                         padding: "10px 16px", textAlign: "left",
-                        fontSize: 11, fontWeight: 600, color: "#6b7280",
+                        fontSize: 11, fontWeight: 600, color: T.text2,
                         textTransform: "uppercase", letterSpacing: ".5px",
-                        borderBottom: "1px solid #e5e5e2",
+                        borderBottom: `1px solid ${T.border}`,
                       }}>{h}</th>
                     ))}
                   </tr>
@@ -371,15 +495,15 @@ export default function AdminDashboard() {
                     <tr
                       key={u.id}
                       style={{
-                        borderBottom: i < users.length - 1 ? "1px solid #f3f4f6" : "none",
-                        background: u.is_active ? "#fff" : "#fafafa",
+                        borderBottom: i < users.length - 1 ? `1px solid ${T.border}` : "none",
+                        background: u.is_active ? T.card : T.bg3,
                         opacity: u.is_active ? 1 : 0.7,
                       }}
                     >
-                      <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 500, color: "#111" }}>
+                      <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 500, color: T.text }}>
                         {u.name}
                       </td>
-                      <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: T.text2 }}>
                         {u.email}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
@@ -390,7 +514,8 @@ export default function AdminDashboard() {
                             onBlur={(e) => changeRole(u.id, e.target.value)}
                             onChange={(e) => changeRole(u.id, e.target.value)}
                             style={{
-                              padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db",
+                              padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border}`,
+                              background: T.bg3, color: T.text,
                               fontSize: 12, cursor: "pointer",
                             }}
                           >
@@ -416,7 +541,7 @@ export default function AdminDashboard() {
                           {u.is_active ? "Active" : "Deactivated"}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 16px", fontSize: 12, color: "#9ca3af" }}>
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: T.text2 }}>
                         {new Date(u.created_at).toLocaleDateString("en-CA")}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
@@ -436,12 +561,13 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
 
             {/* Footer */}
-            <div style={{
-              padding: "10px 18px", borderTop: "1px solid #e5e5e2",
-              fontSize: 12, color: "#9ca3af",
+            <div className="ss-admin-toolbar" style={{
+              padding: "10px 18px", borderTop: `1px solid ${T.border}`,
+              fontSize: 12, color: T.text2,
             }}>
               {users.length} user{users.length !== 1 ? "s" : ""} shown
               {" · "}All actions logged with timestamp
@@ -451,10 +577,10 @@ export default function AdminDashboard() {
 
         {/* ── Courses tab ── */}
         {tab === "courses" && (
-          <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e5e2" }}>
+          <div style={{ background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
             {/* Toolbar */}
             <div style={{
-              padding: "14px 18px", borderBottom: "1px solid #e5e5e2",
+              padding: "14px 18px", borderBottom: `1px solid ${T.border}`,
               display: "flex", gap: 10, alignItems: "center",
             }}>
               <input
@@ -463,14 +589,28 @@ export default function AdminDashboard() {
                 onChange={(e) => setCourseSearch(e.target.value)}
                 style={{
                   flex: 1, padding: "7px 12px", borderRadius: 7,
-                  border: "1px solid #d1d5db", fontSize: 13, outline: "none",
+                  border: `1px solid ${T.border}`, fontSize: 13, outline: "none",
+                  background: T.bg3, color: T.text,
                 }}
               />
               <button
-                onClick={() => setShowCourseModal(true)}
+                onClick={seedCatalogue}
+                disabled={seeding}
+                title="Import the bundled York catalogue (faculty, code, name, year level). Skips existing codes."
+                style={{
+                  padding: "7px 14px", borderRadius: 7, border: `1px solid ${T.border}`,
+                  fontSize: 13, fontWeight: 500, cursor: "pointer",
+                  background: "transparent", color: T.text2, whiteSpace: "nowrap",
+                  opacity: seeding ? 0.6 : 1,
+                }}
+              >
+                {seeding ? "Importing…" : "⇪ Seed York catalogue"}
+              </button>
+              <button
+                onClick={() => { setEditingCourse(null); setShowCourseModal(true); }}
                 style={{
                   padding: "7px 14px", borderRadius: 7, border: "none",
-                  background: "#1d4ed8", color: "#fff", fontSize: 13,
+                  background: T.red, color: "#fff", fontSize: 13,
                   fontWeight: 500, cursor: "pointer",
                 }}
               >
@@ -480,9 +620,9 @@ export default function AdminDashboard() {
                 onClick={() => exportCsv("courses")}
                 title="Download as CSV"
                 style={{
-                  padding: "7px 14px", borderRadius: 7, border: "1px solid #d1d5db",
+                  padding: "7px 14px", borderRadius: 7, border: `1px solid ${T.border}`,
                   fontSize: 13, fontWeight: 500, cursor: "pointer",
-                  background: "#fff", color: "#374151", whiteSpace: "nowrap",
+                  background: "transparent", color: T.text2, whiteSpace: "nowrap",
                 }}
               >
                 ⬇ Export CSV
@@ -491,23 +631,24 @@ export default function AdminDashboard() {
 
             {/* Table */}
             {loading ? (
-              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              <div style={{ padding: 32, textAlign: "center", color: T.text2, fontSize: 13 }}>
                 Loading…
               </div>
             ) : courses.length === 0 ? (
-              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              <div style={{ padding: 32, textAlign: "center", color: T.text2, fontSize: 13 }}>
                 No courses found
               </div>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="ss-admin-table-scroll">
+              <table style={{ width: "100%", minWidth: 620, borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["Code", "Name", "Department", "Actions"].map((h) => (
+                  <tr style={{ background: T.bg3 }}>
+                    {["Code", "Name", "Faculty", "Dept", "Year", "Actions"].map((h) => (
                       <th key={h} style={{
                         padding: "10px 16px", textAlign: "left",
-                        fontSize: 11, fontWeight: 600, color: "#6b7280",
+                        fontSize: 11, fontWeight: 600, color: T.text2,
                         textTransform: "uppercase", letterSpacing: ".5px",
-                        borderBottom: "1px solid #e5e5e2",
+                        borderBottom: `1px solid ${T.border}`,
                       }}>{h}</th>
                     ))}
                   </tr>
@@ -516,30 +657,46 @@ export default function AdminDashboard() {
                   {courses.map((c, i) => (
                     <tr
                       key={c.id}
-                      style={{ borderBottom: i < courses.length - 1 ? "1px solid #f3f4f6" : "none" }}
+                      style={{ borderBottom: i < courses.length - 1 ? `1px solid ${T.border}` : "none" }}
                     >
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{
-                          background: "#ede9fe", color: "#7c3aed",
+                          background: `${T.blue}1a`, color: T.blue,
                           padding: "2px 10px", borderRadius: 20,
                           fontSize: 12, fontWeight: 600,
                         }}>
                           {c.course_code}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 16px", fontSize: 13, color: "#111", fontWeight: 500 }}>
+                      <td style={{ padding: "12px 16px", fontSize: 13, color: T.text, fontWeight: 500 }}>
                         {c.course_name}
                       </td>
-                      <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: T.text2 }}>
+                        {c.faculty ?? "—"}
+                      </td>
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: T.text2 }}>
                         {c.department}
                       </td>
-                      <td style={{ padding: "12px 16px" }}>
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: T.text2 }}>
+                        {c.year_level ? `Year ${c.year_level}` : "—"}
+                      </td>
+                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                        <button
+                          onClick={() => openEdit(c)}
+                          style={{
+                            padding: "5px 12px", borderRadius: 6, border: "none",
+                            fontSize: 12, fontWeight: 500, cursor: "pointer",
+                            background: `${T.blue}1a`, color: T.blue, marginRight: 8,
+                          }}
+                        >
+                          Edit
+                        </button>
                         <button
                           onClick={() => deleteCourse(c.id, c.course_code)}
                           style={{
                             padding: "5px 12px", borderRadius: 6, border: "none",
                             fontSize: 12, fontWeight: 500, cursor: "pointer",
-                            background: "#fee2e2", color: "#b91c1c",
+                            background: `${T.red}1a`, color: T.red,
                           }}
                         >
                           Delete
@@ -549,17 +706,18 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
 
             <div style={{
-              padding: "10px 18px", borderTop: "1px solid #e5e5e2",
-              fontSize: 12, color: "#9ca3af",
+              padding: "10px 18px", borderTop: `1px solid ${T.border}`,
+              fontSize: 12, color: T.text2,
             }}>
               {courses.length} course{courses.length !== 1 ? "s" : ""} shown
             </div>
           </div>
         )}
-      </div>
+      </main>
 
       {/* ── Add course modal ── */}
       {showCourseModal && (
@@ -567,18 +725,20 @@ export default function AdminDashboard() {
           position: "fixed", inset: 0, background: "rgba(0,0,0,.4)",
           display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
         }}>
-          <div style={{
-            background: "#fff", borderRadius: 12, padding: 28,
-            width: 420, boxShadow: "0 20px 60px rgba(0,0,0,.2)",
+          <div className="ss-modal-anim ss-admin-modal" style={{
+            background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 28,
+            width: 420, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow)",
           }}>
-            <h2 style={{ margin: "0 0 18px", fontSize: 16, fontWeight: 600 }}>Add course</h2>
+            <h2 style={{ margin: "0 0 18px", fontSize: 16, fontWeight: 700, color: T.text }}>
+              {editingCourse ? `Edit ${editingCourse.course_code}` : "Add course"}
+            </h2>
             {[
               { label: "Course code", key: "course_code", placeholder: "e.g. EECS 4314" },
               { label: "Course name", key: "course_name", placeholder: "e.g. Advanced Software Eng." },
               { label: "Department", key: "department", placeholder: "e.g. EECS" },
             ].map(({ label, key, placeholder }) => (
               <div key={key} style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: "#374151", display: "block", marginBottom: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 500, color: T.text2, display: "block", marginBottom: 4 }}>
                   {label}
                 </label>
                 <input
@@ -587,32 +747,69 @@ export default function AdminDashboard() {
                   onChange={(e) => setNewCourse((p) => ({ ...p, [key]: e.target.value }))}
                   style={{
                     width: "100%", padding: "8px 12px", borderRadius: 7,
-                    border: "1px solid #d1d5db", fontSize: 13, outline: "none",
+                    border: `1px solid ${T.border}`, background: T.bg3, color: T.text,
+                    fontSize: 13, outline: "none",
                     boxSizing: "border-box",
                   }}
                 />
               </div>
             ))}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: T.text2, display: "block", marginBottom: 4 }}>
+                Faculty
+              </label>
+              <select
+                value={newCourse.faculty}
+                onChange={(e) => setNewCourse((p) => ({ ...p, faculty: e.target.value }))}
+                style={{
+                  width: "100%", padding: "8px 12px", borderRadius: 7,
+                  border: `1px solid ${T.border}`, background: T.bg3, color: T.text,
+                  fontSize: 13, outline: "none", boxSizing: "border-box",
+                }}
+              >
+                <option value="">Select faculty</option>
+                {YORK_FACULTIES.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: T.text2, display: "block", marginBottom: 4 }}>
+                Year level <span style={{ fontWeight: 400 }}>(auto-derived from the code if left blank)</span>
+              </label>
+              <select
+                value={newCourse.year_level === "" ? "" : String(newCourse.year_level)}
+                onChange={(e) => setNewCourse((p) => ({ ...p, year_level: e.target.value === "" ? "" : parseInt(e.target.value, 10) }))}
+                style={{
+                  width: "100%", padding: "8px 12px", borderRadius: 7,
+                  border: `1px solid ${T.border}`, background: T.bg3, color: T.text,
+                  fontSize: 13, outline: "none", boxSizing: "border-box",
+                }}
+              >
+                <option value="">
+                  {deriveYearLevel(newCourse.course_code) ? `Auto (Year ${deriveYearLevel(newCourse.course_code)})` : "Auto"}
+                </option>
+                {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>Year {y}{y === 5 ? " (grad)" : ""}</option>)}
+              </select>
+            </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
               <button
-                onClick={() => setShowCourseModal(false)}
+                onClick={resetCourseForm}
                 style={{
-                  padding: "8px 16px", borderRadius: 7, border: "1px solid #d1d5db",
-                  background: "#fff", fontSize: 13, cursor: "pointer", color: "#374151",
+                  padding: "8px 16px", borderRadius: 7, border: `1px solid ${T.border}`,
+                  background: "transparent", fontSize: 13, cursor: "pointer", color: T.text,
                 }}
               >
                 Cancel
               </button>
               <button
-                onClick={createCourse}
+                onClick={saveCourse}
                 disabled={!newCourse.course_code || !newCourse.course_name || !newCourse.department}
                 style={{
                   padding: "8px 16px", borderRadius: 7, border: "none",
-                  background: "#1d4ed8", color: "#fff", fontSize: 13,
+                  background: T.red, color: "#fff", fontSize: 13,
                   fontWeight: 500, cursor: "pointer",
                 }}
               >
-                Create
+                {editingCourse ? "Save changes" : "Create"}
               </button>
             </div>
           </div>

@@ -12,6 +12,7 @@ import { apiClient } from "@/lib/apiClient";
 import { useGroupTasks, useGroupMembers, type Task } from "@/lib/hooks";
 import type { TaskStatus } from "@/lib/types";
 import { STATUS_META, STATUS_ORDER, PRIORITY_META, fmtDue, dueMeta } from "@/lib/tasks";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const T = {
   card:   "var(--card-bg)",
@@ -61,6 +62,8 @@ export function GroupTasksPanel({
   const [assignee, setAssignee] = useState("");
   const [due, setDue] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function resetForm() {
     setCreating(false); setEditingId(null);
@@ -102,8 +105,10 @@ export function GroupTasksPanel({
   }
 
   async function remove(t: Task) {
-    if (!confirm(`Delete task "${t.title}"?`)) return;
+    setDeleting(true);
     await apiClient.delete(`/tasks/${t.id}`);
+    setDeleting(false);
+    setPendingDelete(null);
     refetch();
   }
 
@@ -240,7 +245,7 @@ export function GroupTasksPanel({
                       }}>
                         Edit
                       </button>
-                      <button onClick={() => remove(t)} style={{
+                      <button onClick={() => setPendingDelete(t)} style={{
                         padding: "3px 9px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                         border: `1px solid ${T.border}`, background: "transparent", color: T.red, cursor: "pointer",
                       }}>
@@ -253,6 +258,17 @@ export function GroupTasksPanel({
             );
           })}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete task"
+          message={`Delete task "${pendingDelete.title}"?`}
+          confirmLabel="Delete"
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => remove(pendingDelete)}
+        />
       )}
     </div>
   );

@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { useSessionDetail, useGroup, rsvpSession, updateSession, cancelSession, summarizeSession, type SessionRSVP } from "@/lib/hooks";
+import { useSessionDetail, useGroup, useGroupMembers, rsvpSession, updateSession, cancelSession, summarizeSession, type SessionRSVP } from "@/lib/hooks";
 
 const T = {
   bg:     "var(--bg)",
@@ -45,6 +45,7 @@ const RSVP_COLORS: Record<RSVPStatus, string> = {
 function AttendeePill({ rsvp }: { rsvp: SessionRSVP }) {
   const status = rsvp.status as RSVPStatus;
   const color  = RSVP_COLORS[status] ?? T.text2;
+  const name   = rsvp.user_name || "Unknown";
 
   return (
     <div style={{
@@ -59,10 +60,10 @@ function AttendeePill({ rsvp }: { rsvp: SessionRSVP }) {
         alignItems: "center", justifyContent: "center",
         fontSize: 12, fontWeight: 700, flexShrink: 0,
       }}>
-        {rsvp.user_id.slice(0, 1).toUpperCase()}
+        {name.slice(0, 1).toUpperCase()}
       </div>
-      <span style={{ flex: 1, fontSize: 12, color: T.text2, fontFamily: "monospace" }}>
-        {rsvp.user_id.slice(0, 8)}…
+      <span style={{ flex: 1, fontSize: 12, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {name}
       </span>
       <span style={{
         fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
@@ -254,6 +255,42 @@ function SummarizeModal({ sessionId, onClose }: {
   );
 }
 
+function CancelConfirmModal({ onClose, onConfirm, cancelling }: {
+  onClose: () => void;
+  onConfirm: () => void;
+  cancelling: boolean;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+        padding: "28px 32px", width: 420, display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: 0 }}>Cancel Session</h2>
+        <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.6 }}>
+          Are you sure you want to cancel this session? Attendees will be notified and RSVPs will be disabled.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={cancelling} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text2,
+            cursor: cancelling ? "not-allowed" : "pointer",
+          }}>Keep Session</button>
+          <button onClick={onConfirm} disabled={cancelling} style={{
+            padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: cancelling ? "not-allowed" : "pointer", opacity: cancelling ? 0.7 : 1,
+          }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SessionDetailPage() {
@@ -263,6 +300,7 @@ export default function SessionDetailPage() {
   const sessionId = params.id;
 
   const [userId, setUserId]         = useState("");
+  const [isAdmin, setIsAdmin]       = useState(false);
   const [myRSVP, setMyRSVP]         = useState<RSVPStatus | null>(null);
   const [submitting, setSubmitting]  = useState(false);
   const [rsvpError, setRsvpError]   = useState<string | null>(null);
@@ -270,15 +308,18 @@ export default function SessionDetailPage() {
   const [showEdit, setShowEdit]     = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
     if (!id) { router.push("/login"); return; }
     setUserId(id);
+    setIsAdmin(localStorage.getItem("ss_user_role") === "admin");
   }, [router]);
 
   const { data: session, loading, error, refetch } = useSessionDetail(sessionId);
   const { data: group } = useGroup(session?.group_id ?? "");
+  const { data: groupMembers } = useGroupMembers(session?.group_id ?? "");
 
   // Sync my current RSVP status once session loads
   useEffect(() => {
@@ -303,17 +344,19 @@ export default function SessionDetailPage() {
 
   // US-C.4 @author: Uzma Alam
   async function handleCancel() {
-    if (!confirm("Are you sure you want to cancel this session?")) return;
     setCancelling(true);
     setCancelError(null);
     const res = await cancelSession(sessionId);
     if (res.error) { setCancelError(res.error); }
-    else           { refetch(); }
+    else           { refetch(); setShowCancelConfirm(false); }
     setCancelling(false);
   }
 
   const upcoming = session ? new Date(session.scheduled_at) >= new Date() : false;
   const isCreator = session?.created_by === userId;
+  const isGroupLeader = (groupMembers ?? []).some(m => m.user_id === userId && m.membership_role === "leader");
+  const canManageSession = isCreator || isGroupLeader || isAdmin;
+  const cancelled = session?.is_cancelled ?? false;
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: T.bg }}>
@@ -374,7 +417,7 @@ export default function SessionDetailPage() {
                     )}
                   </div>
                   {/* cancelled badge or status badge */}
-                  {(session as any).is_cancelled ? (
+                  {cancelled ? (
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20, flexShrink: 0,
                       background: `${T.red}18`, color: T.red, border: `1px solid ${T.red}30`,
@@ -396,20 +439,24 @@ export default function SessionDetailPage() {
                   {session.location && <DetailRow icon="⊙" label={session.location} />}
                 </div>
 
-                {/* Edit / Cancel buttons */}
-                {isCreator && !(session as any).is_cancelled && (
+                {/* Edit / Cancel buttons — only make sense for sessions that haven't happened yet */}
+                {canManageSession && !cancelled && (
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                    <button onClick={() => setShowEdit(true)} style={{
-                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      border: `1px solid ${T.border}`, background: "transparent",
-                      color: T.text2, cursor: "pointer",
-                    }}>Edit</button>
-                    <button onClick={handleCancel} disabled={cancelling} style={{
-                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      border: `1px solid ${T.red}`, background: "transparent",
-                      color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
-                      opacity: cancelling ? 0.6 : 1,
-                    }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+                    {upcoming && (
+                      <>
+                        <button onClick={() => setShowEdit(true)} style={{
+                          padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          border: `1px solid ${T.border}`, background: "transparent",
+                          color: T.text2, cursor: "pointer",
+                        }}>Edit</button>
+                        <button onClick={() => setShowCancelConfirm(true)} disabled={cancelling} style={{
+                          padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          border: `1px solid ${T.red}`, background: "transparent",
+                          color: T.red, cursor: cancelling ? "not-allowed" : "pointer",
+                          opacity: cancelling ? 0.6 : 1,
+                        }}>{cancelling ? "Cancelling…" : "Cancel Session"}</button>
+                      </>
+                    )}
                     <button onClick={() => setShowSummarize(true)} style={{
                       padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                       border: `1px solid ${T.border}`, background: "transparent",
@@ -448,23 +495,34 @@ export default function SessionDetailPage() {
                   </p>
                 )}
 
+                {cancelled ? (
+                  <p style={{ fontSize: 12, color: T.text2, margin: "0 0 10px" }}>
+                    This session has been cancelled — RSVP is no longer available.
+                  </p>
+                ) : !upcoming && (
+                  <p style={{ fontSize: 12, color: T.text2, margin: "0 0 10px" }}>
+                    This session has already happened — RSVP is no longer available.
+                  </p>
+                )}
+
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {(["attending", "maybe", "not_attending"] as RSVPStatus[]).map(s => {
                     const active = myRSVP === s;
                     const color  = RSVP_COLORS[s];
+                    const disabled = submitting || cancelled || !upcoming;
                     return (
                       <button
                         key={s}
                         onClick={() => handleRSVP(s)}
-                        disabled={submitting}
+                        disabled={disabled}
                         style={{
                           padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                           border: `1px solid ${active ? color : T.border}`,
                           background: active ? `${color}18` : "transparent",
                           color: active ? color : T.text2,
-                          cursor: submitting ? "not-allowed" : "pointer",
+                          cursor: disabled ? "not-allowed" : "pointer",
                           textAlign: "left",
-                          opacity: submitting ? 0.6 : 1,
+                          opacity: disabled ? 0.5 : 1,
                           transition: "all 0.12s",
                         }}
                       >
@@ -513,6 +571,14 @@ export default function SessionDetailPage() {
           <SummarizeModal
             sessionId={sessionId}
             onClose={() => setShowSummarize(false)}
+          />
+        )}
+
+        {showCancelConfirm && (
+          <CancelConfirmModal
+            cancelling={cancelling}
+            onClose={() => setShowCancelConfirm(false)}
+            onConfirm={handleCancel}
           />
         )}
       </main>

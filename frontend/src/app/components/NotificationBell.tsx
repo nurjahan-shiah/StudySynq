@@ -7,6 +7,10 @@
  * recent notifications. The badge updates without a page refresh by polling the
  * unread-count endpoint (~20s) and refetching when the dropdown opens.
  *
+ * The dropdown is rendered with position:fixed, anchored to the bell's
+ * on-screen position, so it can never be clipped by a parent container with
+ * overflow:hidden (e.g. the dashboard hero banner).
+ *
  * Drop it next to <ProfileButton /> in any authenticated page header.
  */
 
@@ -18,6 +22,7 @@ import { NOTIFICATION_TYPE_META, relativeTime } from "@/lib/notifications";
 import { BellIcon } from "./BellIcon";
 
 const POLL_MS = 20000;
+const PANEL_WIDTH = 360;
 
 const T = {
   bg2:    "var(--bg2)",
@@ -35,6 +40,8 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
+  // Fixed-position anchor for the dropdown (computed from the bell's rect).
+  const [anchor, setAnchor] = useState<{ top: number; right: number }>({ top: 64, right: 20 });
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -64,14 +71,38 @@ export function NotificationBell() {
     setLoading(false);
   }, [userId]);
 
+  // Compute where the fixed panel should sit, based on the bell's viewport rect.
+  const updateAnchor = useCallback(() => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setAnchor({
+      top: rect.bottom + 8,
+      // Right-align the panel with the bell, but never off the left edge.
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
+
   function toggleOpen() {
     const next = !open;
+    if (next) updateAnchor();
     setOpen(next);
     if (next) {
       fetchPreview();
       fetchUnread();
     }
   }
+
+  // Keep the panel anchored on resize/scroll while open.
+  useEffect(() => {
+    if (!open) return;
+    updateAnchor();
+    window.addEventListener("resize", updateAnchor);
+    window.addEventListener("scroll", updateAnchor, true);
+    return () => {
+      window.removeEventListener("resize", updateAnchor);
+      window.removeEventListener("scroll", updateAnchor, true);
+    };
+  }, [open, updateAnchor]);
 
   // Close the dropdown when clicking outside of it.
   useEffect(() => {
@@ -142,10 +173,15 @@ export function NotificationBell() {
         <div
           ref={panelRef}
           style={{
-            position: "absolute", top: 48, right: 0,
-            width: 360, maxHeight: 460, overflowY: "auto",
+            position: "fixed",
+            top: anchor.top,
+            right: anchor.right,
+            width: PANEL_WIDTH,
+            maxWidth: "calc(100vw - 16px)",
+            maxHeight: `calc(100vh - ${anchor.top + 16}px)`,
+            overflowY: "auto",
             background: T.bg2, border: `1px solid ${T.border}`,
-            borderRadius: 12, zIndex: 300,
+            borderRadius: 12, zIndex: 400,
             boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
             display: "flex", flexDirection: "column",
           }}
