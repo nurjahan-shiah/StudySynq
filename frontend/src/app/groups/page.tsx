@@ -203,7 +203,7 @@ export default function GroupsPage() {
                   border: "none", background: T.red, color: "#fff", cursor: "pointer",
                 }}
               >
-                + Create group
+              Create group
               </button>
             )}
             <NotificationBell />

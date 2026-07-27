@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
+import { useConfirm } from "@/app/components/ConfirmProvider";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -119,6 +120,7 @@ function rolePill(role: string) {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
+  const confirm = useConfirm();
   const router = useRouter();
   const [authorized, setAuthorized] = useState(false);
   const [tab, setTab] = useState<Tab>("courses");
@@ -283,7 +285,12 @@ export default function AdminDashboard() {
   // ── course actions ────────────────────────────────────────────────────────
 
   async function deleteCourse(id: string, code: string) {
-    if (!confirm(`Delete course ${code}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete ${code}?`,
+      message: "This course will be removed from the catalogue. This cannot be undone.",
+      confirmLabel: "Delete course",
+    });
+    if (!ok) return;
     const r = await fetch(`${API}/admin/courses/${id}`, {
       method: "DELETE",
       headers: authHeaders(),
@@ -344,7 +351,13 @@ export default function AdminDashboard() {
   // One-click import of the bundled York catalogue seed (faculty, code, name,
   // year level). Existing codes are skipped — never overwrites admin edits.
   async function seedCatalogue() {
-    if (!confirm("Import the bundled York course catalogue? Existing courses are never modified.")) return;
+    const ok = await confirm({
+      title: "Import York catalogue",
+      message: "Imports the bundled York course catalogue. Existing courses are never modified.",
+      confirmLabel: "Import",
+      destructive: false,
+    });
+    if (!ok) return;
     setSeeding(true);
     try {
       const r = await fetch(`${API}/admin/courses/seed`, { method: "POST", headers: authHeaders() });
@@ -651,7 +664,7 @@ export default function AdminDashboard() {
                   fontWeight: 500, cursor: "pointer",
                 }}
               >
-                + Add course
+               Add course
               </button>
               <button
                 onClick={() => exportCsv("courses")}

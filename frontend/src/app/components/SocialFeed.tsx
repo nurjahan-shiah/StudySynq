@@ -123,7 +123,7 @@ function UserCardPopover({
   }
 
   const friendLabel: Record<string, string> = {
-    none: "+ Add friend",
+    none: "Add friend",
     pending_out: "Request sent ✓",
     pending_in: "Accept request",
     friends: "Friends ✓",

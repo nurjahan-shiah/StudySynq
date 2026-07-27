@@ -112,7 +112,7 @@ function CourseCard({
             opacity: busy ? 0.6 : 1,
           }}
         >
-          {busy ? "Enrolling…" : "+ Enroll"}
+          {busy ? "Enrolling…" : "Enroll"}
         </button>
       ) : (
         <button
@@ -298,7 +298,7 @@ export default function CoursesPage() {
                   className="ss-btn-primary"
                   style={{ fontSize: 12.5, padding: "8px 18px" }}
                 >
-                  + Request a course
+                  Request a course
                 </button>
               </div>
             )}
@@ -356,7 +356,7 @@ export default function CoursesPage() {
               style={{ fontSize: 12, padding: "8px 14px", whiteSpace: "nowrap" }}
               title="Can't find your course? Request it and an admin will review it."
             >
-              + Request a course
+              Request a course
             </button>
           </div>
         )}

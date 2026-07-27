@@ -284,7 +284,7 @@ export default function SessionsPage() {
       padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
       border: "none", background: T.red, color: "#fff", cursor: "pointer",
     }}
-  >+ Schedule Session</button>
+  >Schedule Session</button>
 )}
             <NotificationBell />
             <ProfileButton />
