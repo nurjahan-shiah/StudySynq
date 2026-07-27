@@ -73,6 +73,8 @@ function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onCo
   );
 }
 
+type MemberSearchResult = { user_id: string; user_name: string; user_email: string };
+
 type Tab = "overview" | "activity" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
@@ -100,6 +102,8 @@ export default function GroupDetailPage() {
   const [memberStatus, setMemberStatus] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+  const [memberSearchResults, setMemberSearchResults] = useState<MemberSearchResult[]>([]);
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -131,6 +135,7 @@ export default function GroupDetailPage() {
   const isLeader = me?.membership_role === "leader" || isAdmin;
   const canManage = isOwner || isLeader;
   const canManageMembers = canManage;
+
 
   // Non-members (and not admins) see a "join to unlock" banner and are limited
   // to the two public tabs, until they join or a leader adds them.
@@ -213,10 +218,86 @@ export default function GroupDetailPage() {
 
 
 
+
+  // Search registered profiles while typing in Add Member
+  useEffect(() => {
+    const query = newMemberEmail.trim();
+
+    if (!canManageMembers || query.length < 2) {
+      setMemberSearchResults([]);
+      setMemberSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      setMemberSearchLoading(true);
+
+      const response = await apiClient.get<MemberSearchResult[]>(
+        `/groups/${groupId}/members/search?q=${encodeURIComponent(query)}`
+      );
+
+      if (cancelled) return;
+
+      if (response.error) {
+        setMemberSearchResults([]);
+      } else {
+        setMemberSearchResults(response.data ?? []);
+      }
+
+      setMemberSearchLoading(false);
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [newMemberEmail, groupId, canManageMembers]);
+
+
+
+
+  async function saveGroupDetails() {
+    if (!canManage) return;
+
+    const name = editName.trim();
+    if (!name) {
+      setGroupAction("Group name is required.");
+      return;
+    }
+
+    setSavingGroup(true);
+    setGroupAction("");
+
+    try {
+      const response = await apiClient.put(`/groups/${groupId}`, {
+        name,
+        description: editDescription,
+        is_public: editIsPublic,
+        course_ids: editCourseIds,
+        session: editSession,
+        section: editSection,
+      });
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      setGroupAction("Group details updated.");
+      refetchGroup();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update group.";
+      setGroupAction(message);
+    } finally {
+      setSavingGroup(false);
+    }
+  }
+
   async function addMemberByEmail() {
     if (!canManageMembers) return;
 
-    const email = newMemberEmail.trim();
+    const email = newMemberEmail.trim().toLowerCase();
     if (!email) {
       setMemberError("Enter the student's email address.");
       return;
@@ -227,12 +308,26 @@ export default function GroupDetailPage() {
     setMemberStatus("");
 
     try {
-      await apiClient.post(`/groups/${groupId}/members`, {
+      const response = await apiClient.post(`/groups/${groupId}/members`, {
         user_email: email,
         membership_role: "member",
       });
+
+      if (response.error) {
+        const friendlyMessage = response.error.toLowerCase().includes("user not found")
+          ? "No registered profile exists with that email. Ask the student to sign up first."
+          : response.error;
+
+        throw new Error(friendlyMessage);
+      }
+
+      if (!response.data) {
+        throw new Error("Member could not be added. Please try again.");
+      }
+
       setMemberStatus(`${email} was added to the group.`);
       setNewMemberEmail("");
+      setMemberSearchResults([]);
       refetchMembers();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to add member.";
@@ -250,21 +345,26 @@ export default function GroupDetailPage() {
       return;
     }
 
+    if (!confirm(`Remove ${memberName} from this group?`)) return;
+
     setMemberActionId(memberId);
     setMemberError("");
     setMemberStatus("");
 
     try {
-      const res = await apiClient.delete(`/groups/${groupId}/members/${memberId}`);
-      if (res.error) throw new Error(res.error);
+      const response = await apiClient.delete(`/groups/${groupId}/members/${memberId}`);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
       setMemberStatus(`${memberName} was removed from the group.`);
-      await Promise.all([refetchMembers(), refetchGroup()]);
+      refetchMembers();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to remove member.";
       setMemberError(message);
     } finally {
       setMemberActionId("");
-      setPendingAction(null);
     }
   }
 
@@ -281,12 +381,17 @@ export default function GroupDetailPage() {
     setMemberStatus("");
 
     try {
-      const res = await apiClient.patch(`/groups/${groupId}/members/${memberId}/role`, {
+      const response = await apiClient.patch(`/groups/${groupId}/members/${memberId}/role`, {
         membership_role: nextRole,
       });
-      if (res.error) throw new Error(res.error);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
       setMemberStatus(`${memberName} is now a ${nextRole}.`);
-      await refetchMembers();
+      refetchMembers();
+      refetchGroup();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update member role.";
       setMemberError(message);
@@ -295,75 +400,52 @@ export default function GroupDetailPage() {
     }
   }
 
-  async function saveGroupDetails() {
-    if (!canManage || !editName.trim()) {
-      setMemberError("Group name is required.");
-      return;
-    }
-    if (editCourseIds.length === 0) {
-      setMemberError("Select at least one linked course.");
-      return;
-    }
 
-    if (editSession && !/^(F|W|SU|Y)\d{2}$/i.test(editSession.trim())) {
-      setMemberError("Session must look like F25, W26, SU26, or Y25.");
-      return;
-    }
 
-    setSavingGroup(true);
-    setMemberError("");
-    setMemberStatus("");
-    const res = await apiClient.put(`/groups/${groupId}`, {
-      name: editName.trim(),
-      description: editDescription.trim(),
-      is_public: editIsPublic,
-      session: editSession.trim().toUpperCase(),
-      section: editSection.trim().toUpperCase(),
-      course_ids: editCourseIds,
-    });
-    setSavingGroup(false);
+  async function deleteCurrentGroup() {
+    if (!canManage) return;
 
-    if (res.error) {
-      setMemberError(res.error);
-      return;
+    setPendingAction(null);
+    setGroupAction("delete");
+
+    try {
+      const response = await apiClient.delete(`/groups/${groupId}`);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      router.push("/groups");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete group.";
+      setGroupAction(message);
     }
-    await refetchGroup();
-    setMemberStatus("Group details were updated.");
   }
 
   async function transferOwnership(memberId: string, memberName: string) {
-    if (!isOwner) return;
-
+    setPendingAction(null);
     setMemberActionId(memberId);
     setMemberError("");
     setMemberStatus("");
-    const res = await apiClient.post(`/groups/${groupId}/transfer-ownership`, {
-      new_owner_id: memberId,
-    });
-    setMemberActionId("");
-    setPendingAction(null);
 
-    if (res.error) {
-      setMemberError(res.error);
-      return;
+    try {
+      const response = await apiClient.patch(`/groups/${groupId}/owner`, {
+        user_id: memberId,
+      });
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      setMemberStatus(`Ownership transferred to ${memberName}. They are now the only leader.`);
+      refetchMembers();
+      refetchGroup();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to transfer ownership.";
+      setMemberError(message);
+    } finally {
+      setMemberActionId("");
     }
-    await Promise.all([refetchGroup(), refetchMembers()]);
-    setMemberStatus(`${memberName} is now the group owner. You remain a leader.`);
-  }
-
-  async function deleteCurrentGroup() {
-    if (!isOwner || !group) return;
-
-    setGroupAction("delete");
-    setMemberError("");
-    const res = await apiClient.delete(`/groups/${groupId}`);
-    if (res.error) {
-      setMemberError(res.error);
-      setGroupAction("");
-      setPendingAction(null);
-      return;
-    }
-    router.push("/groups");
   }
 
   return (
@@ -570,6 +652,7 @@ export default function GroupDetailPage() {
               </div>
 
               {canManageMembers && (
+                <>
                 <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
                   <input
                     value={newMemberEmail}
@@ -605,6 +688,53 @@ export default function GroupDetailPage() {
                     {addingMember ? "Adding..." : "Add member"}
                   </button>
                 </div>
+
+                {/* Registered profile suggestions */}
+                {newMemberEmail.trim().length >= 2 && (
+                  <div style={{
+                    marginTop: 8,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                    background: T.bg,
+                    overflow: "hidden",
+                  }}>
+                    {memberSearchLoading ? (
+                      <p style={{ fontSize: 12, color: T.text2, margin: 0, padding: "8px 10px" }}>
+                        Searching registered profiles...
+                      </p>
+                    ) : memberSearchResults.length > 0 ? (
+                      memberSearchResults.map((profile) => (
+                        <button
+                          key={profile.user_id}
+                          type="button"
+                          onClick={() => setNewMemberEmail(profile.user_email)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            border: "none",
+                            borderBottom: `1px solid ${T.border}`,
+                            background: "transparent",
+                            color: T.text,
+                            padding: "8px 10px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                            {profile.user_name}
+                          </span>
+                          <span style={{ display: "block", fontSize: 11, color: T.text2 }}>
+                            {profile.user_email}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p style={{ fontSize: 12, color: T.text2, margin: 0, padding: "8px 10px" }}>
+                        No matching registered profile found. The student must sign up before being added.
+                      </p>
+                    )}
+                  </div>
+                )}
+                </>
               )}
             </div>
 
@@ -663,7 +793,7 @@ export default function GroupDetailPage() {
                         background: m.membership_role === "leader" ? `color-mix(in srgb, ${T.red} 10%, transparent)` : T.bg3,
                         color: m.membership_role === "leader" ? T.red : T.text2,
                       }}>
-                        {isGroupOwner ? "owner" : m.membership_role}
+                        {isGroupOwner ? "owner / leader" : m.membership_role}
                       </span>
 
                       {canManageMembers && !isCurrentUser && !isGroupOwner && (
@@ -866,7 +996,7 @@ export default function GroupDetailPage() {
       {pendingAction?.type === "transfer" && (
         <ConfirmActionModal
           title="Transfer ownership"
-          message={`Transfer ownership of this group to ${pendingAction.memberName}? You will remain a leader.`}
+          message={`Transfer ownership of this group to ${pendingAction.memberName}? They will become the only leader, and you will become a member.`}
           confirmLabel="Transfer ownership"
           busy={memberActionId === pendingAction.memberId}
           onCancel={() => setPendingAction(null)}
