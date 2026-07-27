@@ -401,7 +401,7 @@ export default function GroupDetailPage() {
         throw new Error(response.error);
       }
 
-      setMemberStatus(`Ownership transferred to ${memberName}. You remain a leader.`);
+      setMemberStatus(`Ownership transferred to ${memberName}. They are now the only leader.`);
       refetchMembers();
       refetchGroup();
     } catch (err) {
@@ -735,7 +735,7 @@ export default function GroupDetailPage() {
                         background: m.membership_role === "leader" ? `color-mix(in srgb, ${T.red} 10%, transparent)` : T.bg3,
                         color: m.membership_role === "leader" ? T.red : T.text2,
                       }}>
-                        {isGroupOwner ? "owner" : m.membership_role}
+                        {isGroupOwner ? "owner / leader" : m.membership_role}
                       </span>
 
                       {canManageMembers && !isCurrentUser && !isGroupOwner && (
@@ -938,7 +938,7 @@ export default function GroupDetailPage() {
       {pendingAction?.type === "transfer" && (
         <ConfirmActionModal
           title="Transfer ownership"
-          message={`Transfer ownership of this group to ${pendingAction.memberName}? You will remain a leader.`}
+          message={`Transfer ownership of this group to ${pendingAction.memberName}? They will become the only leader, and you will become a member.`}
           confirmLabel="Transfer ownership"
           busy={memberActionId === pendingAction.memberId}
           onCancel={() => setPendingAction(null)}

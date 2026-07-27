@@ -863,13 +863,17 @@ async def transfer_group_ownership(
     current_user = Depends(get_current_user)
 ):
     """
-    Transfer group ownership without changing normal member roles.
-    The old owner remains a leader.
-    The new owner becomes the group owner.
+    Transfer group ownership and leadership together.
+    A group can only have one leader, so the new owner becomes the only leader.
     """
-    group = _require_group_owner(db, group_id, current_user)
+    group = _get_group_or_404(db, group_id)
 
-    old_owner_id = group.created_by
+    if current_user["role"] != "admin" and str(group.created_by) != str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner can transfer ownership"
+        )
+
     new_owner_membership = _get_membership(db, group_id, data.user_id)
 
     if not new_owner_membership:
@@ -878,34 +882,34 @@ async def transfer_group_ownership(
             detail="Only an existing group member can become the owner"
         )
 
-    if str(old_owner_id) == str(data.user_id):
+    if str(group.created_by) == str(data.user_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This user is already the owner"
         )
 
-    old_owner_membership = _get_membership(db, group_id, old_owner_id)
+    previous_owner_id = group.created_by
 
-    if old_owner_membership:
-        old_owner_membership.role = GroupMembershipRole.LEADER
-    else:
-        db.add(GroupMembership(
-            group_id=group_id,
-            user_id=old_owner_id,
-            role=GroupMembershipRole.LEADER
-        ))
+    db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id
+    ).update(
+        {GroupMembership.role: GroupMembershipRole.MEMBER},
+        synchronize_session=False
+    )
 
+    new_owner_membership.role = GroupMembershipRole.LEADER
     group.created_by = data.user_id
 
-    _invalidate_recommendations(db, [old_owner_id, data.user_id])
+    _invalidate_recommendations(db, [previous_owner_id, data.user_id])
     db.commit()
 
     return {
         "status": "ok",
-        "message": "Ownership transferred. Previous owner remains a leader.",
+        "message": "Ownership transferred. The new owner is now the only leader.",
         "owner_id": str(data.user_id),
-        "previous_owner_id": str(old_owner_id)
+        "previous_owner_id": str(previous_owner_id)
     }
+
 
 
 @app.patch("/groups/{group_id}/members/{user_id}/role", response_model=GroupMemberResponse)
@@ -918,7 +922,8 @@ async def update_group_member_role(
 ):
     """
     US-B.4 - Promote or demote a member.
-    This changes only the member role. It does not transfer ownership.
+    A group can only have one leader.
+    Making someone leader also makes them the group owner.
     """
     group = _require_group_manager(db, group_id, current_user)
 
@@ -942,20 +947,24 @@ async def update_group_member_role(
             detail="Member not found in this group"
         )
 
-    if str(user_id) == str(group.created_by) and normalized_role == "member":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The group owner cannot be demoted. Transfer ownership first."
+    if normalized_role == "leader":
+        db.query(GroupMembership).filter(
+            GroupMembership.group_id == group_id
+        ).update(
+            {GroupMembership.role: GroupMembershipRole.MEMBER},
+            synchronize_session=False
         )
 
-    if normalized_role == "leader":
         membership.role = GroupMembershipRole.LEADER
+        group.created_by = user_id
+
     else:
-        if membership.role == GroupMembershipRole.LEADER and _leader_count(db, group_id) <= 1:
+        if str(user_id) == str(group.created_by):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A group must have at least one leader"
+                detail="The group owner cannot be demoted. Make another member the leader first."
             )
+
         membership.role = GroupMembershipRole.MEMBER
 
     _invalidate_recommendations(db, [user_id])
@@ -971,6 +980,7 @@ async def update_group_member_role(
         membership_role=membership.role.value,
         joined_at=membership.joined_at
     )
+
 
 
 @app.post("/groups/{group_id}/transfer-ownership")
