@@ -129,6 +129,24 @@ export default function GroupDetailPage() {
   const canManageMembers = canManage;
   const visibleTabs = canManage ? [...TABS, { id: "manage" as Tab, label: "Manage" }] : TABS;
 
+  // Non-members (and not admins) see a "join to unlock" banner and lose access
+  // to member-only tabs, until they join or an admin adds them.
+  const isMember = Boolean(me) || isAdmin;
+  const restricted = !groupLoading && !isMember;
+
+  async function handleJoinGroup() {
+    if (joining) return;
+    setJoining(true);
+    setJoinError("");
+    const res = await joinGroup(groupId);
+    setJoining(false);
+    if (res.error) {
+      setJoinError(res.error);
+      return;
+    }
+    await Promise.all([refetchGroup(), refetchMembers()]);
+  }
+
   useEffect(() => {
     if (!canManage) return;
     apiClient.get<Course[]>("/courses").then((res) => {
