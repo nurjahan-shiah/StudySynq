@@ -6,12 +6,12 @@
  * tab is seeded from ?tab= so a notification can deep-link straight to it.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
-import { useGroup, useGroupMembers, joinGroup, type Course } from "@/lib/hooks";
+import { useGroup, useGroupMembers, joinGroup, leaveGroup, type Course } from "@/lib/hooks";
 import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
@@ -33,6 +33,7 @@ const T = {
 type PendingAction =
   | { type: "remove"; memberId: string; memberName: string }
   | { type: "transfer"; memberId: string; memberName: string }
+  | { type: "leave" }
   | { type: "delete" };
 
 function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onConfirm }: {
@@ -83,6 +84,9 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "members",       label: "Members" },
 ];
 
+// The only tabs a non-member may browse before joining the group.
+const PUBLIC_TABS: Tab[] = ["sessions", "members"];
+
 export default function GroupDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -127,12 +131,28 @@ export default function GroupDetailPage() {
   const isLeader = me?.membership_role === "leader" || isAdmin;
   const canManage = isOwner || isLeader;
   const canManageMembers = canManage;
-  const visibleTabs = canManage ? [...TABS, { id: "manage" as Tab, label: "Manage" }] : TABS;
 
-  // Non-members (and not admins) see a "join to unlock" banner and lose access
-  // to member-only tabs, until they join or an admin adds them.
+  // Non-members (and not admins) see a "join to unlock" banner and are limited
+  // to the two public tabs, until they join or a leader adds them.
   const isMember = Boolean(me) || isAdmin;
   const restricted = !groupLoading && !isMember;
+
+  const visibleTabs = useMemo(() => {
+    // Non-members can only browse Sessions and Members before joining.
+    if (restricted) return TABS.filter((t) => PUBLIC_TABS.includes(t.id));
+    if (canManage) return [...TABS, { id: "manage" as Tab, label: "Manage" }];
+    return TABS;
+  }, [restricted, canManage]);
+
+  // If the current tab isn't available to this user (e.g. a non-member landed on
+  // ?tab=tasks, or someone was just removed from the group), fall back to the
+  // first tab they can actually see.
+  useEffect(() => {
+    if (groupLoading) return;
+    if (!visibleTabs.some((t) => t.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? "sessions");
+    }
+  }, [groupLoading, tab, visibleTabs]);
 
   async function handleJoinGroup() {
     if (joining) return;
@@ -145,6 +165,27 @@ export default function GroupDetailPage() {
       return;
     }
     await Promise.all([refetchGroup(), refetchMembers()]);
+  }
+
+  async function handleLeaveGroup() {
+    // The owner can't abandon the group — ownership has to move first, otherwise
+    // the group is left with nobody who can manage or delete it.
+    if (isOwner) {
+      setPendingAction(null);
+      setMemberError("Transfer ownership to another member before leaving this group.");
+      return;
+    }
+
+    setGroupAction("leave");
+    setMemberError("");
+    const res = await leaveGroup(groupId);
+    if (res.error) {
+      setMemberError(res.error);
+      setGroupAction("");
+      setPendingAction(null);
+      return;
+    }
+    router.push("/groups");
   }
 
   useEffect(() => {
@@ -470,11 +511,11 @@ export default function GroupDetailPage() {
           </div>
         )}
 
-        {tab === "activity" && (
+        {tab === "activity" && !restricted && (
           <GroupActivityFeed groupId={groupId} />
         )}
 
-        {tab === "announcements" && (
+        {tab === "announcements" && !restricted && (
           <AnnouncementBoard groupId={groupId} isLeader={isLeader} />
         )}
 
@@ -498,13 +539,35 @@ export default function GroupDetailPage() {
               borderRadius: 12,
               padding: 16,
             }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: "0 0 6px" }}>
-                Group Leader Management Console
-              </h2>
-              <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.5 }}>
-                View the full member roster, manage member roles, and remove members from the group.
-                {canManageMembers ? " Leader controls are enabled for your account." : " Only the group leader can manage members."}
-              </p>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: "0 0 6px" }}>
+                    Group Leader Management Console
+                  </h2>
+                  <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.5 }}>
+                    View the full member roster, manage member roles, and remove members from the group.
+                    {canManageMembers ? " Leader controls are enabled for your account." : " Only the group leader can manage members."}
+                  </p>
+                </div>
+
+                {/* Any member other than the owner can leave; the owner must
+                    transfer ownership first. */}
+                {Boolean(me) && !isOwner && (
+                  <button
+                    onClick={() => setPendingAction({ type: "leave" })}
+                    disabled={groupAction === "leave"}
+                    style={{
+                      flexShrink: 0,
+                      padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                      border: `1px solid ${T.red}`, background: "transparent", color: T.red,
+                      cursor: groupAction === "leave" ? "not-allowed" : "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {groupAction === "leave" ? "Leaving…" : "Leave group"}
+                  </button>
+                )}
+              </div>
 
               {canManageMembers && (
                 <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
@@ -808,6 +871,17 @@ export default function GroupDetailPage() {
           busy={memberActionId === pendingAction.memberId}
           onCancel={() => setPendingAction(null)}
           onConfirm={() => transferOwnership(pendingAction.memberId, pendingAction.memberName)}
+        />
+      )}
+
+      {pendingAction?.type === "leave" && group && (
+        <ConfirmActionModal
+          title="Leave group"
+          message={`Leave "${group.name}"? You'll lose access to its announcements, tasks, and resources until you rejoin.`}
+          confirmLabel="Leave group"
+          busy={groupAction === "leave"}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={handleLeaveGroup}
         />
       )}
 
