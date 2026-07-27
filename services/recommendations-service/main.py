@@ -6,12 +6,14 @@ Runs on port 8008
 """
 from fastapi import FastAPI, HTTPException, status, Depends
 from sqlalchemy.orm import Session
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 import sys
 sys.path.append("/shared")
 from shared_models import (
     Recommendation, Group, GroupMembership, UserEnrollment,
-    GroupCourse, Course, User, StudySession, Base
+    GroupCourse, Course, User, StudySession, Resource, Base
 )
 from shared_database import engine, get_db, run_light_migrations
 from shared_auth import get_current_user
@@ -73,30 +75,220 @@ async def get_recommendations(db: Session = Depends(get_db),
                     break
         return {"recommendations": results, "source": "ml_pipeline"}
 
-    # 2. Fallback: live course-overlap scoring
+    # 2. Fallback: live multi-signal scoring
     user_courses = {e.course_id for e in
                     db.query(UserEnrollment).filter(UserEnrollment.user_id == user_id).all()}
     if not user_courses:
         return {"recommendations": [], "source": "fallback"}
 
+    me = db.query(User).filter(User.id == user_id).first()
+    signals = _build_scoring_signals(db, user_id, user_courses, joined_group_ids, me)
+
     scored = []
-    for group in db.query(Group).filter(
-        Group.is_public == True,
-        Group.is_deleted == False
-    ).all():
-        if group.id in joined_group_ids or str(group.created_by) == str(user_id):
+    for group in signals["candidates"]:
+        breakdown = _score_group(group, signals)
+        if breakdown["score"] <= 0:
             continue
-        group_courses = {gc.course_id for gc in
-                         db.query(GroupCourse).filter(GroupCourse.group_id == group.id).all()}
-        overlap = len(user_courses & group_courses)
-        if overlap > 0:
-            scored.append({
-                "group_id": str(group.id),
-                "name": group.name,
-                "score": min(overlap * 50, 100),
-            })
+        scored.append({
+            "group_id": str(group.id),
+            "name": group.name,
+            "score": breakdown["score"],
+            "reasons": breakdown["reasons"],
+        })
+
     scored.sort(key=lambda x: x["score"], reverse=True)
     return {"recommendations": scored[:10], "source": "fallback"}
+
+
+# ── Scoring ──────────────────────────────────────────────────────────────────
+#
+# The old scorer was `min(overlap * 50, 100)`, which meant almost every group
+# scored exactly 50 (one shared course) — the number carried no ranking
+# information. This version blends five signals into a 0-100 score so the
+# percentage actually differentiates groups:
+#
+#   Course fit       45 pts  how well the group's courses match yours
+#   Peer overlap     20 pts  classmates / people you already study with
+#   Activity         20 pts  is the group actually alive
+#   Size fit         10 pts  4-8 members studies better than 1 or 40
+#   Context           5 pts  same term/section, same major
+#
+# All the per-group data is fetched in bulk up front, so scoring N groups costs
+# a constant number of queries rather than 3N.
+
+WEIGHTS = {"course": 45, "peers": 20, "activity": 20, "size": 10, "context": 5}
+
+
+def _build_scoring_signals(db, user_id, user_courses, joined_group_ids, me,
+                           include_group=None):
+    """Bulk-load everything the scorer needs for all candidate groups.
+
+    `include_group` forces one extra group into the loaded data even if it isn't
+    a recommendation candidate — used by /explain, which may be asked about a
+    group the user already joined or created.
+    """
+    candidates = [
+        g for g in db.query(Group).filter(
+            Group.is_public == True,
+            Group.is_deleted == False,
+        ).all()
+        if g.id not in joined_group_ids and str(g.created_by) != str(user_id)
+    ]
+    candidate_ids = [g.id for g in candidates]
+    if include_group is not None and include_group.id not in candidate_ids:
+        candidate_ids.append(include_group.id)
+
+    courses_by_group = defaultdict(set)
+    members_by_group = defaultdict(set)
+    upcoming_by_group = defaultdict(int)
+    recent_by_group = defaultdict(int)
+    resources_by_group = defaultdict(int)
+
+    if candidate_ids:
+        for gc in db.query(GroupCourse).filter(GroupCourse.group_id.in_(candidate_ids)).all():
+            courses_by_group[gc.group_id].add(gc.course_id)
+
+        for m in db.query(GroupMembership).filter(GroupMembership.group_id.in_(candidate_ids)).all():
+            members_by_group[m.group_id].add(m.user_id)
+
+        now = datetime.utcnow()
+        recent_cutoff = now - timedelta(days=30)
+        for s in db.query(StudySession).filter(
+            StudySession.group_id.in_(candidate_ids),
+            StudySession.is_cancelled == False,
+            StudySession.is_deleted == False,
+        ).all():
+            if s.scheduled_at and s.scheduled_at >= now:
+                upcoming_by_group[s.group_id] += 1
+            elif s.scheduled_at and s.scheduled_at >= recent_cutoff:
+                recent_by_group[s.group_id] += 1
+
+        for r in db.query(Resource).filter(
+            Resource.group_id.in_(candidate_ids),
+            Resource.is_deleted == False,
+        ).all():
+            resources_by_group[r.group_id] += 1
+
+    # People I already study with — used as a familiarity signal.
+    my_peers = set()
+    if joined_group_ids:
+        for m in db.query(GroupMembership).filter(
+            GroupMembership.group_id.in_(list(joined_group_ids))
+        ).all():
+            if m.user_id != user_id:
+                my_peers.add(m.user_id)
+
+    # Which candidate-group members share a course with me.
+    all_member_ids = {uid for members in members_by_group.values() for uid in members}
+    classmates = set()
+    if all_member_ids:
+        for e in db.query(UserEnrollment).filter(
+            UserEnrollment.user_id.in_(list(all_member_ids)),
+            UserEnrollment.course_id.in_(list(user_courses)),
+        ).all():
+            classmates.add(e.user_id)
+
+    # My current term, inferred from the groups I'm already in.
+    my_session = None
+    if joined_group_ids:
+        sessions = [
+            g.session for g in
+            db.query(Group).filter(Group.id.in_(list(joined_group_ids))).all()
+            if g.session
+        ]
+        if sessions:
+            my_session = max(set(sessions), key=sessions.count)
+
+    return {
+        "candidates": candidates,
+        "user_courses": user_courses,
+        "courses_by_group": courses_by_group,
+        "members_by_group": members_by_group,
+        "upcoming_by_group": upcoming_by_group,
+        "recent_by_group": recent_by_group,
+        "resources_by_group": resources_by_group,
+        "my_peers": my_peers,
+        "classmates": classmates,
+        "my_session": my_session,
+        "my_major": (me.major if me else None),
+    }
+
+
+def _score_group(group, s):
+    """Score one group 0-100 and explain which signals contributed."""
+    user_courses = s["user_courses"]
+    group_courses = s["courses_by_group"].get(group.id, set())
+    members = s["members_by_group"].get(group.id, set())
+    overlap = user_courses & group_courses
+    reasons = []
+
+    # 1. Course fit — mostly "how much of this group's focus do I share",
+    #    plus a smaller bonus for sharing several courses with it.
+    if not overlap:
+        return {"score": 0, "reasons": []}
+    focus = len(overlap) / len(group_courses) if group_courses else 0
+    depth = min(len(overlap) / 3, 1.0)
+    course_pts = WEIGHTS["course"] * (0.75 * focus + 0.25 * depth)
+    if len(overlap) == 1:
+        reasons.append("Shares a course you're enrolled in")
+    else:
+        reasons.append(f"Shares {len(overlap)} of your courses")
+
+    # 2. Peer overlap — classmates in the group, and people you already study with.
+    size = max(len(members), 1)
+    classmate_count = len(members & s["classmates"])
+    familiar_count = len(members & s["my_peers"])
+    peer_ratio = classmate_count / size
+    peer_pts = WEIGHTS["peers"] * (0.6 * peer_ratio + 0.4 * min(familiar_count / 3, 1.0))
+    if classmate_count:
+        reasons.append(f"{classmate_count} member(s) take a course with you")
+    if familiar_count:
+        reasons.append(f"{familiar_count} member(s) already study with you")
+
+    # 3. Activity — a group with upcoming sessions beats a dormant one.
+    upcoming = s["upcoming_by_group"].get(group.id, 0)
+    recent = s["recent_by_group"].get(group.id, 0)
+    resources = s["resources_by_group"].get(group.id, 0)
+    activity = (
+        0.5 * min(upcoming / 2, 1.0)
+        + 0.25 * min(recent / 2, 1.0)
+        + 0.25 * min(resources / 5, 1.0)
+    )
+    activity_pts = WEIGHTS["activity"] * activity
+    if upcoming:
+        reasons.append(f"{upcoming} upcoming session(s)")
+    if resources:
+        reasons.append(f"{resources} shared resource(s)")
+
+    # 4. Size fit — small-group studying works best around 4-8 people.
+    if size <= 1:
+        size_factor = 0.3
+    elif size <= 3:
+        size_factor = 0.7
+    elif size <= 8:
+        size_factor = 1.0
+    elif size <= 15:
+        size_factor = 0.7
+    else:
+        size_factor = 0.4
+    size_pts = WEIGHTS["size"] * size_factor
+
+    # 5. Context — same term/section and same major as you.
+    context = 0.0
+    if s["my_session"] and group.session and group.session == s["my_session"]:
+        context += 0.6
+        reasons.append(f"Running in {group.session}")
+    if s["my_major"] and group.intended_major and group.intended_major == s["my_major"]:
+        context += 0.4
+        reasons.append("Matches your major")
+    context_pts = WEIGHTS["context"] * context
+
+    total = course_pts + peer_pts + activity_pts + size_pts + context_pts
+    # Keep it off the extremes: a live recommendation is never a literal 0 or a
+    # promised-perfect 100.
+    score = max(5, min(99, round(total)))
+
+    return {"score": score, "reasons": reasons[:3]}
 
 
 # ── Recommended tab: groups matching the user's major (view only) ────────────
@@ -274,12 +466,28 @@ async def explain_recommendation(
             )
         ]
 
-    # Get precomputed score if available
+    # Get precomputed score if available, else score it live with the same
+    # multi-signal function the list endpoint uses so the two agree.
     rec = (db.query(Recommendation)
              .filter(Recommendation.user_id == user_id,
                      Recommendation.group_id == group_id)
              .first())
-    score = rec.score if rec else overlap_count * 50
+    if rec:
+        score = rec.score
+        score_reasons = []
+    else:
+        joined_group_ids = {
+            m.group_id for m in db.query(GroupMembership).filter(
+                GroupMembership.user_id == user_id
+            ).all()
+        }
+        me = db.query(User).filter(User.id == user_id).first()
+        signals = _build_scoring_signals(
+            db, user_id, user_courses, joined_group_ids, me, include_group=group
+        )
+        breakdown = _score_group(group, signals)
+        score = breakdown["score"]
+        score_reasons = breakdown["reasons"]
 
     # Build prompt
     shared_course_text = ", ".join(shared_courses) if shared_courses else "no named courses"
@@ -305,6 +513,7 @@ Start with 'This group'."""
             "group_name": group.name,
             "score": score,
             "shared_courses": shared_courses,
+            "reasons": score_reasons,
             "explanation": fallback_explanation,
         }
 
@@ -336,6 +545,7 @@ Start with 'This group'."""
         "group_name": group.name,
         "score": score,
         "shared_courses": shared_courses,
+        "reasons": score_reasons,
         "explanation": explanation,
     }
 

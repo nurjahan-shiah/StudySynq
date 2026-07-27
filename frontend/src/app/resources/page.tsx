@@ -6,6 +6,7 @@ import { useState, useEffect, CSSProperties } from "react";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AiTutorPanel } from "@/app/components/AiTutorPanel";
+import { useConfirm } from "@/app/components/ConfirmProvider";
 import { apiClient } from "@/lib/apiClient";
 import {
   useMyGroups,
@@ -454,6 +455,7 @@ function AskLibrary({ groupId }: { groupId: string }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ResourcesPage() {
+  const confirm = useConfirm();
   const [userId, setUserId] = useState("");
   const [userRole, setUserRole] = useState("");
   const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
@@ -504,9 +506,11 @@ export default function ResourcesPage() {
   const handleDeleteResource = async (
     resource: ResourceWithGroup
   ) => {
-    const confirmed = window.confirm(
-      `Delete "${resource.file_name}"?\n\nThis action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: "Delete resource",
+      message: `"${resource.file_name}" will be permanently removed. This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
 
     if (!confirmed) {
       return;
