@@ -11,11 +11,12 @@ import { useParams, useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { AnnouncementBoard } from "@/app/components/AnnouncementBoard";
-import { useGroup, useGroupMembers, type Course } from "@/lib/hooks";
+import { useGroup, useGroupMembers, joinGroup, type Course } from "@/lib/hooks";
 import { apiClient } from "@/lib/apiClient";
 import { GroupResourcesPanel } from "@/app/components/GroupResourcesPanel";
 import { GroupTasksPanel } from "@/app/components/GroupTasksPanel";
 import { GroupSessionsCalendar } from "@/app/components/GroupSessionsCalendar";
+import { GroupActivityFeed } from "@/app/components/GroupActivityFeed";
 
 const T = {
   bg:     "var(--bg)",
@@ -73,9 +74,10 @@ function ConfirmActionModal({ title, message, confirmLabel, busy, onCancel, onCo
 
 type MemberSearchResult = { user_id: string; user_name: string; user_email: string };
 
-type Tab = "overview" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
+type Tab = "overview" | "activity" | "announcements" | "tasks" | "sessions" | "resources" | "members" | "manage";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
+  { id: "activity",      label: "Activity" },
   { id: "announcements", label: "Announcements" },
   { id: "tasks",         label: "Tasks" },
   { id: "sessions",      label: "Sessions" },
@@ -108,6 +110,8 @@ export default function GroupDetailPage() {
   const [savingGroup, setSavingGroup] = useState(false);
   const [groupAction, setGroupAction] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
 
   useEffect(() => {
     const id = localStorage.getItem("ss_user_id");
@@ -127,6 +131,8 @@ export default function GroupDetailPage() {
   const isLeader = me?.membership_role === "leader" || isAdmin;
   const canManage = isOwner || isLeader;
   const canManageMembers = canManage;
+  const isMember = Boolean(me);
+  const restricted = !isAdmin && !isMember && tab !== "overview";
   const visibleTabs = canManage ? [...TABS, { id: "manage" as Tab, label: "Manage" }] : TABS;
 
   useEffect(() => {
@@ -192,6 +198,29 @@ export default function GroupDetailPage() {
   }, [newMemberEmail, groupId, canManageMembers]);
 
 
+
+
+  async function handleJoinGroup() {
+    setJoining(true);
+    setJoinError("");
+
+    try {
+      const response = await apiClient.post(`/groups/${groupId}/join`, {});
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      refetchMembers();
+      refetchGroup();
+      setTab("overview");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to join group.";
+      setJoinError(message);
+    } finally {
+      setJoining(false);
+    }
+  }
 
   async function saveGroupDetails() {
     if (!canManage) return;
@@ -408,8 +437,35 @@ export default function GroupDetailPage() {
           })}
         </div>
 
+        {restricted && (
+          <div style={{
+            background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+            padding: "20px 24px", marginBottom: 20, display: "flex",
+            alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+          }}>
+            <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.5 }}>
+              You're not a member of this group yet. Join to unlock announcements, tasks, resources, and more.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {joinError && <span style={{ fontSize: 12, color: T.red }}>{joinError}</span>}
+              <button
+                onClick={handleJoinGroup}
+                disabled={joining}
+                style={{
+                  padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  border: "none", background: T.red, color: "#fff",
+                  cursor: joining ? "not-allowed" : "pointer", opacity: joining ? 0.7 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {joining ? "Joining…" : "Please join group to access more features"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab content */}
-        {tab === "overview" && (
+        {tab === "overview" && !restricted && (
           <div style={{ maxWidth: 760 }}>
             <p style={{ fontSize: 14, color: T.text, margin: "0 0 14px", lineHeight: 1.6 }}>
               {group?.description || "No description provided."}
@@ -480,11 +536,15 @@ export default function GroupDetailPage() {
           </div>
         )}
 
+        {tab === "activity" && (
+          <GroupActivityFeed groupId={groupId} />
+        )}
+
         {tab === "announcements" && (
           <AnnouncementBoard groupId={groupId} isLeader={isLeader} />
         )}
 
-        {tab === "tasks" && (
+        {tab === "tasks" && !restricted && (
           <GroupTasksPanel groupId={groupId} canManage={isLeader} userId={userId} />
         )}
 
@@ -492,7 +552,7 @@ export default function GroupDetailPage() {
           <GroupSessionsCalendar groupId={groupId} />
         )}
 
-        {tab === "resources" && (
+        {tab === "resources" && !restricted && (
           <GroupResourcesPanel groupId={groupId} canManage={isLeader} userId={userId} />
         )}
 

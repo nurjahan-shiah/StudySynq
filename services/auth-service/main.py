@@ -14,6 +14,7 @@ Runs on port 8001
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -34,7 +35,7 @@ from pydantic import BaseModel, EmailStr
 sys.path.append("/shared")
 
 from shared_models import User, UserRole, Base
-from shared_database import SessionLocal, engine, get_db
+from shared_database import SessionLocal, engine, get_db, run_light_migrations
 from shared_auth import (
     create_access_token,
     create_refresh_token,
@@ -66,6 +67,7 @@ COOKIE_SECURE = (
 def init_db():
     """Create tables if they don't exist."""
     Base.metadata.create_all(bind=engine)
+    run_light_migrations(engine)
 
 
 @asynccontextmanager
@@ -148,7 +150,7 @@ def ensure_user_is_active(
 
         row = db.execute(
             _sqlt(
-                "SELECT is_active "
+                "SELECT is_active, deactivated_until "
                 "FROM users "
                 "WHERE id = :uid"
             ),
@@ -156,11 +158,26 @@ def ensure_user_is_active(
         ).fetchone()
 
         if row is not None and not row[0]:
+            if row[1] is not None and row[1] <= datetime.utcnow():
+                db.execute(
+                    _sqlt(
+                        "UPDATE users SET is_active = TRUE, "
+                        "deactivation_reason = NULL, deactivated_at = NULL, "
+                        "deactivated_until = NULL WHERE id = :uid"
+                    ),
+                    {"uid": str(user.id)}
+                )
+                db.commit()
+                return
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    "Account has been deactivated. "
-                    "Contact an administrator."
+                    "Account has been deactivated"
+                    + (
+                        f" until {row[1].date().isoformat()}."
+                        if row[1] is not None
+                        else ". Contact an administrator."
+                    )
                 )
             )
     except HTTPException:
