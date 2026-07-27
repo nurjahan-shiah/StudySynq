@@ -16,6 +16,7 @@ from datetime import datetime
 from uuid import uuid4, UUID
 from fastapi import FastAPI, HTTPException, status, Depends, Body, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -177,6 +178,16 @@ def _leader_count(db: Session, group_id: UUID) -> int:
 class GroupMemberAddRequest(BaseModel):
     user_email: str
     membership_role: str = "member"
+
+
+class GroupMemberSearchResult(BaseModel):
+    user_id: UUID
+    user_name: str
+    user_email: str
+
+
+class GroupOwnershipTransferRequest(BaseModel):
+    user_id: UUID
 
 
 # ============================================================================
@@ -692,6 +703,53 @@ async def leave_group(
 
 
 
+
+@app.get("/groups/{group_id}/members/search", response_model=List[GroupMemberSearchResult])
+async def search_registered_profiles_for_group(
+    group_id: UUID,
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    US-B.4 - Search registered profiles by name or email before adding them to a group.
+    Existing group members are excluded from the results.
+    """
+    _require_group_manager(db, group_id, current_user)
+
+    query_text = q.strip()
+    if len(query_text) < 2:
+        return []
+
+    existing_member_ids = [
+        row[0] for row in db.query(GroupMembership.user_id)
+        .filter(GroupMembership.group_id == group_id)
+        .all()
+    ]
+
+    search_pattern = f"%{query_text}%"
+    users_query = db.query(User).filter(
+        or_(
+            User.email.ilike(search_pattern),
+            User.name.ilike(search_pattern)
+        )
+    )
+
+    if existing_member_ids:
+        users_query = users_query.filter(~User.id.in_(existing_member_ids))
+
+    users = users_query.order_by(User.email).limit(8).all()
+
+    return [
+        GroupMemberSearchResult(
+            user_id=user.id,
+            user_name=user.name,
+            user_email=user.email
+        )
+        for user in users
+    ]
+
+
 @app.post("/groups/{group_id}/members", response_model=GroupMemberResponse)
 async def add_group_member(
     group_id: UUID,
@@ -700,24 +758,17 @@ async def add_group_member(
     current_user = Depends(get_current_user)
 ):
     """
-    US-B.4 - Add a registered user to the group by email.
-    Only the current group leader can add members.
+    US-B.4 - Add a registered student to a group by email.
+    Adding a member must NOT transfer ownership.
+    Leadership transfer is handled only by the role update endpoint.
     """
-    group = _get_group_or_404(db, group_id)
     _require_group_manager(db, group_id, current_user)
 
     email = data.user_email.strip().lower()
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Member email is required"
-        )
-
-    normalized_role = data.membership_role.strip().lower()
-    if normalized_role not in {"member", "leader"}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="membership_role must be either 'member' or 'leader'"
+            detail="Email address is required"
         )
 
     user = db.query(User).filter(User.email.ilike(email)).first()
@@ -731,33 +782,26 @@ async def add_group_member(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is already a member of this group"
+            detail="This user is already a member of the group"
         )
 
-    if normalized_role == "leader":
-        existing_leaders = db.query(GroupMembership).filter(
-            GroupMembership.group_id == group_id,
-            GroupMembership.role == GroupMembershipRole.LEADER
-        ).all()
-
-        for leader in existing_leaders:
-            leader.role = GroupMembershipRole.MEMBER
-
-        group.created_by = user.id
-
     membership = GroupMembership(
-        user_id=user.id,
         group_id=group_id,
-        role=GroupMembershipRole.LEADER if normalized_role == "leader" else GroupMembershipRole.MEMBER
+        user_id=user.id,
+        role=GroupMembershipRole.MEMBER
     )
+
     db.add(membership)
+    _invalidate_recommendations(db, [user.id])
     db.commit()
+    db.refresh(membership)
 
     return GroupMemberResponse(
         user_id=user.id,
         user_name=user.name,
         user_email=user.email,
-        membership_role=membership.role.value
+        membership_role=membership.role.value,
+        joined_at=membership.joined_at
     )
 
 
@@ -810,6 +854,64 @@ async def remove_group_member(
     return {"status": "removed", "group_id": group_id, "user_id": user_id}
 
 
+
+@app.patch("/groups/{group_id}/owner")
+async def transfer_group_ownership(
+    group_id: UUID,
+    data: GroupOwnershipTransferRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Transfer group ownership and leadership together.
+    A group can only have one leader, so the new owner becomes the only leader.
+    """
+    group = _get_group_or_404(db, group_id)
+
+    if current_user["role"] != "admin" and str(group.created_by) != str(current_user["user_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner can transfer ownership"
+        )
+
+    new_owner_membership = _get_membership(db, group_id, data.user_id)
+
+    if not new_owner_membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Only an existing group member can become the owner"
+        )
+
+    if str(group.created_by) == str(data.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This user is already the owner"
+        )
+
+    previous_owner_id = group.created_by
+
+    db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id
+    ).update(
+        {GroupMembership.role: GroupMembershipRole.MEMBER},
+        synchronize_session=False
+    )
+
+    new_owner_membership.role = GroupMembershipRole.LEADER
+    group.created_by = data.user_id
+
+    _invalidate_recommendations(db, [previous_owner_id, data.user_id])
+    db.commit()
+
+    return {
+        "status": "ok",
+        "message": "Ownership transferred. The new owner is now the only leader.",
+        "owner_id": str(data.user_id),
+        "previous_owner_id": str(previous_owner_id)
+    }
+
+
+
 @app.patch("/groups/{group_id}/members/{user_id}/role", response_model=GroupMemberResponse)
 async def update_group_member_role(
     group_id: UUID,
@@ -820,27 +922,15 @@ async def update_group_member_role(
 ):
     """
     US-B.4 - Promote or demote a member.
-    Making someone leader transfers leadership from the current leader.
+    A group can only have one leader.
+    Making someone leader also makes them the group owner.
     """
     group = _require_group_manager(db, group_id, current_user)
 
     if str(user_id) == str(current_user["user_id"]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Leaders cannot change their own role"
-        )
-
-    if str(user_id) == str(group.created_by):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="The group owner's role cannot be changed"
-        )
-
-    membership = _get_membership(db, group_id, user_id)
-    if not membership:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Member not found in this group"
+            detail="You cannot change your own role"
         )
 
     normalized_role = membership_role.strip().lower()
@@ -850,48 +940,47 @@ async def update_group_member_role(
             detail="membership_role must be either 'member' or 'leader'"
         )
 
-    if normalized_role == "leader":
-        existing_leaders = db.query(GroupMembership).filter(
-            GroupMembership.group_id == group_id,
-            GroupMembership.role == GroupMembershipRole.LEADER
-        ).all()
+    membership = _get_membership(db, group_id, user_id)
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found in this group"
+        )
 
-        for leader in existing_leaders:
-            leader.role = GroupMembershipRole.MEMBER
+    if normalized_role == "leader":
+        db.query(GroupMembership).filter(
+            GroupMembership.group_id == group_id
+        ).update(
+            {GroupMembership.role: GroupMembershipRole.MEMBER},
+            synchronize_session=False
+        )
 
         membership.role = GroupMembershipRole.LEADER
         group.created_by = user_id
 
     else:
-        if membership.role == GroupMembershipRole.LEADER and _leader_count(db, group_id) <= 1:
+        if str(user_id) == str(group.created_by):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot demote the only group leader"
+                detail="The group owner cannot be demoted. Make another member the leader first."
             )
 
         membership.role = GroupMembershipRole.MEMBER
 
+    _invalidate_recommendations(db, [user_id])
     db.commit()
     db.refresh(membership)
 
-    _notify_user(db, user_id, "system",
-                 title="Your group role changed",
-                 message=f"You are now a {normalized_role} in {group.name}",
-                 link=f"/groups/{group_id}", group_id=group_id)
-
     user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
 
     return GroupMemberResponse(
         user_id=user.id,
         user_name=user.name,
         user_email=user.email,
-        membership_role=membership.role.value
+        membership_role=membership.role.value,
+        joined_at=membership.joined_at
     )
+
 
 
 @app.post("/groups/{group_id}/transfer-ownership")
