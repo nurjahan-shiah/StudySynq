@@ -388,7 +388,28 @@ export default function GroupDetailPage() {
 
   async function transferOwnership(memberId: string, memberName: string) {
     setPendingAction(null);
-    await changeMemberRole(memberId, memberName, "leader");
+    setMemberActionId(memberId);
+    setMemberError("");
+    setMemberStatus("");
+
+    try {
+      const response = await apiClient.patch(`/groups/${groupId}/owner`, {
+        user_id: memberId,
+      });
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      setMemberStatus(`Ownership transferred to ${memberName}. You remain a leader.`);
+      refetchMembers();
+      refetchGroup();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to transfer ownership.";
+      setMemberError(message);
+    } finally {
+      setMemberActionId("");
+    }
   }
 
   return (
