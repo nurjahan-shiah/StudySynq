@@ -12,7 +12,6 @@ import httpx
 from fastapi import FastAPI, HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
 import io
-import requests
 
 # ── US-D.1 hardening: server-side upload pipeline validation ────────────────
 SUPABASE_URL              = (os.getenv("SUPABASE_URL") or "").rstrip("/")
@@ -160,68 +159,72 @@ def delete_from_storage(file_url: str) -> bool:
 
 
 # ============================================================================
-# US-D: PDF & Image Text Extraction
+# US-D: PDF & Image Text Extraction (fail-safe: any error returns "")
 # ============================================================================
+
+def _fetch_bytes(file_url: str) -> bytes | None:
+    """Download a file with httpx (already a service dependency)."""
+    try:
+        resp = httpx.get(file_url, timeout=15.0, follow_redirects=True)
+        resp.raise_for_status()
+        return resp.content
+    except Exception:
+        return None
+
 
 def extract_pdf_text(file_url: str) -> str:
     """Extract text from a PDF hosted at file_url."""
+    content = _fetch_bytes(file_url)
+    if content is None:
+        return ""
     try:
-        resp = requests.get(file_url, timeout=15)
-        resp.raise_for_status()
-        
-        try:
-            import PyPDF2
-            reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
-            return text.strip()[:5000]  # Limit to 5000 chars
-        except ImportError:
-            # Fallback: pypdf2 not installed, return empty
-            return ""
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(content))
+        text = ""
+        for page in reader.pages:
+            text += (page.extract_text() or "") + "\n"
+        return text.strip()[:5000]
     except Exception:
         return ""
 
 
 def extract_image_text(file_url: str) -> str:
     """Extract text from an image using Tesseract (if available)."""
+    content = _fetch_bytes(file_url)
+    if content is None:
+        return ""
     try:
-        resp = requests.get(file_url, timeout=15)
-        resp.raise_for_status()
-        
-        try:
-            from PIL import Image
-            import pytesseract
-            img = Image.open(io.BytesIO(resp.content))
-            text = pytesseract.image_to_string(img)
-            return text.strip()[:2000]  # Limit to 2000 chars
-        except ImportError:
-            return ""
+        from PIL import Image
+        import pytesseract
+        img = Image.open(io.BytesIO(content))
+        return pytesseract.image_to_string(img).strip()[:2000]
     except Exception:
         return ""
 
 
 def extract_txt_content(file_url: str) -> str:
     """Fetch plain text files."""
+    content = _fetch_bytes(file_url)
+    if content is None:
+        return ""
     try:
-        resp = requests.get(file_url, timeout=15)
-        resp.raise_for_status()
-        return resp.text.strip()[:5000]
+        return content.decode("utf-8", errors="ignore").strip()[:5000]
     except Exception:
         return ""
 
 
 def extract_file_content(file_type: str, file_url: str) -> str:
-    """Extract searchable text from file based on type."""
-    file_type_lower = file_type.lower()
-    
-    if "pdf" in file_type_lower:
-        return extract_pdf_text(file_url)
-    elif any(img in file_type_lower for img in ["image", "png", "jpg", "jpeg", "gif", "webp"]):
-        return extract_image_text(file_url)
-    elif any(txt in file_type_lower for txt in ["txt", "md"]):
-        return extract_txt_content(file_url)
-    
+    """Extract searchable text from file based on type. Never raises."""
+    try:
+        file_type_lower = (file_type or "").lower()
+        if "pdf" in file_type_lower:
+            return extract_pdf_text(file_url)
+        elif any(img in file_type_lower for img in ["image", "png", "jpg", "jpeg", "gif", "webp"]):
+            return extract_image_text(file_url)
+        elif any(txt in file_type_lower for txt in ["txt", "md"]):
+            return extract_txt_content(file_url)
+    except Exception:
+        pass
     return ""
 
 
@@ -311,9 +314,9 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     if not membership and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only group members can upload resources")
 
-    # Extract content for searchable indexing
+    # Extract content for searchable indexing (fail-safe; returns "" on any issue)
     extracted_content = extract_file_content(normalized_type, file_url)
-    
+
     new_resource = Resource(
         id=uuid4(),
         group_id=group_id,
@@ -321,8 +324,11 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
         file_name=file_name,
         file_url=file_url,
         file_type=normalized_type,
-        content_text=extracted_content,  # Store extracted text
     )
+    # Only set content_text if the model actually has the column
+    # (lets this service run before/without the DB migration)
+    if hasattr(Resource, "content_text") and extracted_content:
+        new_resource.content_text = extracted_content
     db.add(new_resource)
     db.commit()
     db.refresh(new_resource)
@@ -415,12 +421,13 @@ async def ask_library(
             "sources": [],
         }
 
-    # Build context from resource metadata + extracted content
+    # Build context from resource metadata + extracted content (if column exists)
     context_parts = []
     for r in resources:
         meta = f"- {r.file_name} ({r.file_type}) uploaded {r.created_at.strftime('%Y-%m-%d')}"
-        if r.content_text:
-            meta += f"\n  Content preview: {r.content_text[:300]}..."
+        content = getattr(r, "content_text", None)
+        if content:
+            meta += f"\n  Content preview: {content[:300]}..."
         context_parts.append(meta)
     
     context = "\n".join(context_parts)
@@ -441,7 +448,7 @@ Answer the question based on the available resources. If relevant files exist, m
         matches = [
             r for r in resources 
             if any(k in r.file_name.lower() for k in keywords) 
-            or any(k in (r.content_text or "").lower() for k in keywords)
+            or any(k in (getattr(r, "content_text", None) or "").lower() for k in keywords)
         ]
         return {
             "answer": f"Found {len(matches)} file(s) related to your question." if matches else "No matching files found.",
@@ -474,7 +481,7 @@ Answer the question based on the available resources. If relevant files exist, m
         {"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type}
         for r in resources
         if any(k in r.file_name.lower() for k in keywords) 
-        or any(k in (r.content_text or "").lower() for k in keywords)
+        or any(k in (getattr(r, "content_text", None) or "").lower() for k in keywords)
     ]
 
     return {"answer": answer, "sources": sources}
