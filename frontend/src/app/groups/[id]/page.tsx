@@ -94,6 +94,8 @@ export default function GroupDetailPage() {
   const [memberActionId, setMemberActionId] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberStatus, setMemberStatus] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -122,6 +124,7 @@ export default function GroupDetailPage() {
   const isOwner = Boolean(group && userId && group.created_by === userId);
   const isLeader = me?.membership_role === "leader" || isAdmin;
   const canManage = isOwner || isLeader;
+  const canManageMembers = canManage;
   const visibleTabs = canManage ? [...TABS, { id: "manage" as Tab, label: "Manage" }] : TABS;
 
   useEffect(() => {
@@ -148,8 +151,38 @@ export default function GroupDetailPage() {
   }, [group, courses]);
 
 
+
+  async function addMemberByEmail() {
+    if (!canManageMembers) return;
+
+    const email = newMemberEmail.trim();
+    if (!email) {
+      setMemberError("Enter the student's email address.");
+      return;
+    }
+
+    setAddingMember(true);
+    setMemberError("");
+    setMemberStatus("");
+
+    try {
+      await apiClient.post(`/groups/${groupId}/members`, {
+        user_email: email,
+        membership_role: "member",
+      });
+      setMemberStatus(`${email} was added to the group.`);
+      setNewMemberEmail("");
+      refetchMembers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to add member.";
+      setMemberError(message);
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
   async function removeGroupMember(memberId: string, memberName: string) {
-    if (!isLeader) return;
+    if (!canManageMembers) return;
 
     if (memberId === userId) {
       setMemberError("You cannot remove yourself from the group.");
@@ -175,7 +208,7 @@ export default function GroupDetailPage() {
   }
 
   async function changeMemberRole(memberId: string, memberName: string, nextRole: "member" | "leader") {
-    if (!isLeader) return;
+    if (!canManageMembers) return;
 
     if (memberId === userId) {
       setMemberError("You cannot change your own role.");
@@ -423,8 +456,46 @@ export default function GroupDetailPage() {
               </h2>
               <p style={{ fontSize: 13, color: T.text2, margin: 0, lineHeight: 1.5 }}>
                 View the full member roster, manage member roles, and remove members from the group.
-                {isLeader ? " Leader controls are enabled for your account." : " Only group leaders and admins can manage members."}
+                {canManageMembers ? " Leader controls are enabled for your account." : " Only the group leader can manage members."}
               </p>
+
+              {canManageMembers && (
+                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                  <input
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addMemberByEmail();
+                    }}
+                    placeholder="Add member by email"
+                    style={{
+                      flex: "1 1 260px",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${T.border}`,
+                      background: T.bg,
+                      color: T.text,
+                      fontSize: 13,
+                    }}
+                  />
+                  <button
+                    onClick={addMemberByEmail}
+                    disabled={addingMember}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${T.border}`,
+                      background: T.red,
+                      color: "white",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: addingMember ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {addingMember ? "Adding..." : "Add member"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {memberStatus && (
@@ -485,7 +556,7 @@ export default function GroupDetailPage() {
                         {isGroupOwner ? "owner" : m.membership_role}
                       </span>
 
-                      {canManage && !isCurrentUser && !isGroupOwner && (
+                      {canManageMembers && !isCurrentUser && !isGroupOwner && (
                         <>
                           <button
                             onClick={() => changeMemberRole(m.user_id, m.user_name, nextRole)}
