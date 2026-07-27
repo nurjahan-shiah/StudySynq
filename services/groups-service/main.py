@@ -14,8 +14,9 @@ Runs on port 8003
 
 from datetime import datetime
 from uuid import uuid4, UUID
-from fastapi import FastAPI, HTTPException, status, Depends, Body
+from fastapi import FastAPI, HTTPException, status, Depends, Body, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -164,6 +165,12 @@ def _leader_count(db: Session, group_id: UUID) -> int:
 class GroupMemberAddRequest(BaseModel):
     user_email: str
     membership_role: str = "member"
+
+
+class GroupMemberSearchResult(BaseModel):
+    user_id: UUID
+    user_name: str
+    user_email: str
 
 
 # ============================================================================
@@ -567,6 +574,53 @@ async def leave_group(
 
     return {"status": "left"}
 
+
+
+
+@app.get("/groups/{group_id}/members/search", response_model=List[GroupMemberSearchResult])
+async def search_registered_profiles_for_group(
+    group_id: UUID,
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    US-B.4 - Search registered profiles by name or email before adding them to a group.
+    Existing group members are excluded from the results.
+    """
+    _require_group_manager(db, group_id, current_user)
+
+    query_text = q.strip()
+    if len(query_text) < 2:
+        return []
+
+    existing_member_ids = [
+        row[0] for row in db.query(GroupMembership.user_id)
+        .filter(GroupMembership.group_id == group_id)
+        .all()
+    ]
+
+    search_pattern = f"%{query_text}%"
+    users_query = db.query(User).filter(
+        or_(
+            User.email.ilike(search_pattern),
+            User.name.ilike(search_pattern)
+        )
+    )
+
+    if existing_member_ids:
+        users_query = users_query.filter(~User.id.in_(existing_member_ids))
+
+    users = users_query.order_by(User.email).limit(8).all()
+
+    return [
+        GroupMemberSearchResult(
+            user_id=user.id,
+            user_name=user.name,
+            user_email=user.email
+        )
+        for user in users
+    ]
 
 
 @app.post("/groups/{group_id}/members", response_model=GroupMemberResponse)
