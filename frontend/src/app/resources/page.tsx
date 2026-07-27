@@ -1,11 +1,11 @@
 "use client";
 
-// US-D.5 — Upload Activity & Storage Stats (leader-only widget)
+// US-D: Merged AI Study Assistant + Ask Library into unified Resources Intelligence Block
+// + Added "All Files" dropdown option + refined visual design
 
 import { useState, useEffect, CSSProperties } from "react";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
-import { AiTutorPanel } from "@/app/components/AiTutorPanel";
 import { useConfirm } from "@/app/components/ConfirmProvider";
 import { apiClient } from "@/lib/apiClient";
 import {
@@ -14,6 +14,7 @@ import {
   askLibrary,
   type ResourceWithGroup,
   type MyGroup,
+  type UserRole,
 } from "@/lib/hooks";
 
 const T = {
@@ -58,7 +59,7 @@ function isLink(fileType: string): boolean {
   return fileType.toLowerCase() === "link";
 }
 
-// ── Stats Widget (US-D.5, leader-only) ───────────────────────────────────────
+// ── Stats Widget (leader-only) ───────────────────────────────────────
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -203,81 +204,55 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
         transform: "translate(-50%,-50%)",
         width: "min(860px, 92vw)", maxHeight: "88vh",
         background: T.card, border: `1px solid ${T.border}`,
-        borderRadius: 16, zIndex: 301,
-        display: "flex", flexDirection: "column", overflow: "hidden",
+        borderRadius: 16, zIndex: 301, overflow: "hidden",
+        display: "flex", flexDirection: "column",
       }}>
         {/* Header */}
         <div style={{
+          padding: "16px 20px", borderBottom: `1px solid ${T.border}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "14px 18px", borderBottom: `1px solid ${T.border}`, flexShrink: 0,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 20 }}>{fileIcon(resource.file_type)}</span>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, color: T.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {resource.file_name}
-              </p>
-              <p style={{ fontSize: 11, color: T.text2, margin: 0 }}>{resource.group_name} · {formatDate(resource.created_at)}</p>
-            </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: T.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {resource.file_name}
+            </p>
+            <p style={{ fontSize: 12, color: T.text2, margin: "4px 0 0" }}>
+              {resource.group_name} • {formatDate(resource.created_at)}
+            </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <a
-              href={resource.file_url}
-              download={resource.file_name}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                background: T.red, color: "#fff", textDecoration: "none",
-                display: "inline-flex", alignItems: "center", gap: 5,
-              }}
-            >
-              ↓ Download
-            </a>
-            <button
-              type="button"
-              aria-label="Close preview"
-              onClick={onClose}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: T.text2, padding: 4, lineHeight: 1 }}
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: T.text2, padding: "0 10px" }}
+          >
+            ✕
+          </button>
         </div>
 
-        {/* Preview area */}
-        <div style={{ flex: 1, overflow: "hidden", minHeight: 0, background: T.bg3 }}>
-          {isPDF(resource.file_type) && (
-            <iframe
-              src={resource.file_url}
-              title={resource.file_name}
-              referrerPolicy="no-referrer"
-              sandbox="allow-same-origin allow-downloads"
-              style={{ width: "100%", height: "100%", border: "none", minHeight: 480 }}
-            />
-          )}
-          {isImage(resource.file_type) && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", padding: 20, minHeight: 480 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+          {canPreview ? (
+            isPDF(resource.file_type) ? (
+              <iframe
+                src={`${resource.file_url}#toolbar=0`}
+                style={{ width: "100%", height: "100%", border: "none", borderRadius: 8 }}
+              />
+            ) : (
               <img
                 src={resource.file_url}
                 alt={resource.file_name}
-                style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 8 }}
+                style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }}
               />
-            </div>
-          )}
-          {!canPreview && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", padding: 40, minHeight: 260, gap: 12 }}>
-              <span style={{ fontSize: 48, opacity: 0.4 }}>{fileIcon(resource.file_type)}</span>
-              <p style={{ color: T.text2, fontSize: 13, margin: 0 }}>Preview not available for this file type.</p>
+            )
+          ) : (
+            <div style={{ textAlign: "center", color: T.text2, paddingTop: "40px" }}>
+              <p style={{ fontSize: 36, margin: "0 0 10px" }}>{fileIcon(resource.file_type)}</p>
+              <p style={{ fontSize: 13, margin: 0 }}>Preview not available for this file type.</p>
               <a
                 href={resource.file_url}
-                download={resource.file_name}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: T.red, color: "#fff", textDecoration: "none" }}
+                download
+                style={{ fontSize: 12, color: T.red, textDecoration: "none", marginTop: "12px", display: "inline-block" }}
               >
-                ↓ Download file
+                Download instead →
               </a>
             </div>
           )}
@@ -287,7 +262,224 @@ function PreviewModal({ resource, onClose }: { resource: ResourceWithGroup; onCl
   );
 }
 
-// ── Resource Row ──────────────────────────────────────────────────────────────
+// ── Unified Resources Intelligence Block (AI + Ask Library merged) ───────────────
+
+interface AskLibraryResponse {
+  answer: string;
+  sources: Array<{ file_name: string; file_url: string; file_type: string }>;
+}
+
+interface AiTutorMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function ResourcesIntelligenceBlock({ groupId }: { groupId: string }) {
+  const [tab, setTab] = useState<"chat" | "library">("chat");
+  const [chatMessages, setChatMessages] = useState<AiTutorMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  
+  const [libraryQuestion, setLibraryQuestion] = useState("");
+  const [libraryAnswer, setLibraryAnswer] = useState<AskLibraryResponse | null>(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  const handleChatSend = async () => {
+    if (!chatInput.trim()) return;
+    
+    const newMessages: AiTutorMessage[] = [...chatMessages, { role: "user", content: chatInput }];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setChatLoading(true);
+
+    const response = await apiClient.post<{ reply: string; note?: string }>("/resources/ai-tutor", {
+      messages: newMessages,
+      mode: "chat",
+    });
+
+    if (!response.error && response.data) {
+      setChatMessages([...newMessages, { role: "assistant", content: response.data.reply }]);
+    }
+    setChatLoading(false);
+  };
+
+  const handleLibraryAsk = async () => {
+    if (!libraryQuestion.trim()) return;
+    
+    setLibraryLoading(true);
+    const response = await askLibrary(groupId, libraryQuestion);
+    if (!response.error && response.data) {
+      setLibraryAnswer(response.data);
+    }
+    setLibraryLoading(false);
+  };
+
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
+      marginBottom: 20, overflow: "hidden",
+    }}>
+      {/* Tab header */}
+      <div style={{
+        display: "flex", gap: 0, borderBottom: `1px solid ${T.border}`,
+        background: T.bg3,
+      }}>
+        <button
+          onClick={() => setTab("chat")}
+          style={{
+            flex: 1, padding: "12px 16px", fontSize: 13, fontWeight: 600,
+            border: "none", background: tab === "chat" ? T.card : "transparent",
+            color: tab === "chat" ? T.text : T.text2, cursor: "pointer",
+            borderBottom: tab === "chat" ? `2px solid ${T.red}` : "none",
+          }}
+        >
+          🤖 AI Study Assistant
+        </button>
+        <button
+          onClick={() => setTab("library")}
+          style={{
+            flex: 1, padding: "12px 16px", fontSize: 13, fontWeight: 600,
+            border: "none", background: tab === "library" ? T.card : "transparent",
+            color: tab === "library" ? T.text : T.text2, cursor: "pointer",
+            borderBottom: tab === "library" ? `2px solid ${T.red}` : "none",
+          }}
+        >
+          📚 Ask Your Library
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: "16px" }}>
+        {tab === "chat" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>
+              Get concepts explained, work through problems, or take a quiz.
+            </p>
+            
+            {/* Messages */}
+            <div style={{
+              maxHeight: "300px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8,
+              padding: "12px", background: T.bg, borderRadius: 8,
+            }}>
+              {chatMessages.length === 0 ? (
+                <p style={{ fontSize: 12, color: T.text2, margin: 0, textAlign: "center", paddingTop: "20px" }}>
+                  Start a conversation...
+                </p>
+              ) : (
+                chatMessages.map((msg, i) => (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                  }}>
+                    <div style={{
+                      maxWidth: "80%", padding: "8px 12px", borderRadius: 8,
+                      background: msg.role === "user" ? T.red : T.bg2,
+                      color: msg.role === "user" ? "white" : T.text,
+                      fontSize: 12, lineHeight: "1.4",
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Input */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="Ask anything about your courses..."
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleChatSend()}
+                disabled={chatLoading}
+                style={{
+                  flex: 1, padding: "7px 12px", borderRadius: 6,
+                  border: `1px solid ${T.border}`, background: T.bg2,
+                  color: T.text, fontSize: 12, outline: "none",
+                }}
+              />
+              <button
+                onClick={handleChatSend}
+                disabled={chatLoading || !chatInput.trim()}
+                style={{
+                  padding: "7px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  border: "none", background: T.red, color: "white", cursor: "pointer",
+                  opacity: chatLoading || !chatInput.trim() ? 0.6 : 1,
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>
+              Search your group's resources by content or metadata.
+            </p>
+
+            {/* Input */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="What are you looking for?"
+                value={libraryQuestion}
+                onChange={e => setLibraryQuestion(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLibraryAsk()}
+                disabled={libraryLoading}
+                style={{
+                  flex: 1, padding: "7px 12px", borderRadius: 6,
+                  border: `1px solid ${T.border}`, background: T.bg2,
+                  color: T.text, fontSize: 12, outline: "none",
+                }}
+              />
+              <button
+                onClick={handleLibraryAsk}
+                disabled={libraryLoading || !libraryQuestion.trim()}
+                style={{
+                  padding: "7px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  border: "none", background: T.red, color: "white", cursor: "pointer",
+                  opacity: libraryLoading || !libraryQuestion.trim() ? 0.6 : 1,
+                }}
+              >
+                Ask
+              </button>
+            </div>
+
+            {/* Answer */}
+            {libraryAnswer && (
+              <div style={{
+                padding: "12px", background: T.bg, borderRadius: 8,
+                borderLeft: `3px solid ${T.red}`,
+              }}>
+                <p style={{ fontSize: 12, color: T.text, margin: "0 0 10px", lineHeight: "1.5" }}>
+                  {libraryAnswer.answer}
+                </p>
+                {libraryAnswer.sources.length > 0 && (
+                  <div style={{ fontSize: 11, color: T.text2 }}>
+                    <p style={{ margin: "0 0 6px", fontWeight: 600 }}>Sources:</p>
+                    {libraryAnswer.sources.map((src, i) => (
+                      <div key={i} style={{ margin: "4px 0" }}>
+                        <a
+                          href={src.file_url}
+                          download
+                          style={{ color: T.red, textDecoration: "none", fontSize: 11 }}
+                        >
+                          📥 {src.file_name}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
 
 function ResourceRow({
   resource,
@@ -302,210 +494,95 @@ function ResourceRow({
   deleting: boolean;
   onDelete: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onPreview}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPreview(); } }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "grid", gridTemplateColumns: "32px 1fr auto auto",
-        alignItems: "center", gap: 12,
+        display: "grid",
+        gridTemplateColumns: "32px 1fr auto auto",
+        gap: 12,
         padding: "12px 16px",
         borderBottom: `1px solid ${T.border}`,
-        background: hovered ? T.bg3 : "transparent",
-        cursor: "pointer", transition: "background 0.12s",
+        alignItems: "center",
+        cursor: "pointer",
       }}
+      onClick={onPreview}
     >
-      <span style={{ fontSize: 18, textAlign: "center", flexShrink: 0 }}>{fileIcon(resource.file_type)}</span>
-
+      <span style={{ fontSize: 18 }}>{fileIcon(resource.file_type)}</span>
       <div style={{ minWidth: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: T.text, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: T.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {resource.file_name}
         </p>
-        <p style={{ fontSize: 11, color: T.text2, margin: 0 }}>{resource.group_name}</p>
+        <p style={{ fontSize: 11, color: T.text2, margin: "2px 0 0" }}>
+          {resource.group_name} • {formatDate(resource.created_at)}
+        </p>
       </div>
-
-      <span style={{ fontSize: 11, color: T.text2, whiteSpace: "nowrap", flexShrink: 0 }}>
-        {formatDate(resource.created_at)}
-      </span>
-
-      <div
+      <a
+        href={resource.file_url}
+        download
+        onClick={e => e.stopPropagation()}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          flexShrink: 0,
+          fontSize: 11, color: T.red, textDecoration: "none", cursor: "pointer",
+          padding: "4px 8px", borderRadius: 4, whiteSpace: "nowrap",
         }}
       >
-        <a
-          href={resource.file_url}
-          download={resource.file_name}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
+        Download
+      </a>
+      {canDelete && (
+        <button
+          onClick={e => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          disabled={deleting}
           style={{
-            padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
-            background: `${T.red}18`, color: T.red, textDecoration: "none",
-            border: `1px solid ${T.red}30`, flexShrink: 0,
+            fontSize: 11, color: T.red, background: "none", border: "none", cursor: "pointer",
+            opacity: deleting ? 0.5 : 1,
           }}
         >
-          ↓ Download
-        </a>
-        {canDelete && (
-          <button
-            type="button"
-            disabled={deleting}
-            onClick={e => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            style={{
-              padding: "5px 12px",
-              borderRadius: 7,
-              fontSize: 11,
-              fontWeight: 600,
-              background: deleting ? T.bg3 : "transparent",
-              color: deleting ? T.text2 : T.red,
-              border: `1px solid ${deleting ? T.border : `${T.red}55`}`,
-              cursor: deleting ? "not-allowed" : "pointer",
-              opacity: deleting ? 0.7 : 1,
-            }}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-// US-G.3 @author: Uzma Alam — AI Resource Q&A
-function AskLibrary({ groupId }: { groupId: string }) {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer]     = useState<string | null>(null);
-  const [sources, setSources]   = useState<{ file_name: string; file_url: string; file_type: string }[]>([]);
-  const [loading, setLoading]   = useState(false);
-
-  async function handleAsk() {
-    if (!question.trim()) return;
-    setLoading(true);
-    setAnswer(null);
-    setSources([]);
-    const res = await askLibrary(groupId, question);
-    if (res.data) {
-      setAnswer(res.data.answer);
-      setSources(res.data.sources ?? []);
-    }
-    setLoading(false);
-  }
-
-  return (
-    <div style={{
-      background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
-      padding: "16px 20px", marginBottom: 16,
-    }}>
-      <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>
-        Ask your library
-      </p>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={question}
-          onChange={e => setQuestion(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") handleAsk(); }}
-          placeholder="e.g. What did we cover about normalization?"
-          style={{
-            flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 13,
-            border: `1px solid ${T.border}`, background: T.bg2,
-            color: T.text, outline: "none",
-          }}
-        />
-        <button onClick={handleAsk} disabled={loading} style={{
-          padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-          border: "none", background: T.red, color: "#fff",
-          cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
-        }}>
-          {loading ? "Thinking…" : "Ask"}
+          {deleting ? "..." : "Delete"}
         </button>
-      </div>
-      {answer && (
-        <div style={{ marginTop: 12 }}>
-          <p style={{ fontSize: 13, color: T.text, margin: "0 0 8px", lineHeight: 1.5 }}>{answer}</p>
-          {sources.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: T.text2, textTransform: "uppercase", letterSpacing: "0.07em", margin: 0 }}>Sources</p>
-              {sources.map((s, i) => (
-                <a key={i} href={s.file_url} target="_blank" rel="noopener noreferrer" style={{
-                  fontSize: 12, color: T.red, textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-                }}>
-                  {fileIcon(s.file_type)} {s.file_name}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
       )}
     </div>
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
-
 export default function ResourcesPage() {
-  const confirm = useConfirm();
-  const [userId, setUserId] = useState("");
-  const [userRole, setUserRole] = useState("");
-  const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] =
-    useState<"all" | "pdf" | "document" | "image" | "link" | "other">("all");
-  // US-G.3 @author: Uzma Alam
-  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "pdf" | "document" | "image" | "link" | "other">("all");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [preview, setPreview] = useState<ResourceWithGroup | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const { data: resources, loading, error, refetch: refetchResources } = useMyResources(undefined as never);
+  const { data: myGroups, loading: groupsLoading } = useMyGroups(undefined as never);
+  const confirm = useConfirm();
+
   useEffect(() => {
-    setUserId(localStorage.getItem("ss_user_id") ?? "");
-    setUserRole(localStorage.getItem("ss_user_role") ?? "");
-  }, []);
-
-  const { data: myGroups, loading: groupsLoading } = useMyGroups(userId);
-  const {
-    data: resources,
-    loading: resLoading,
-    error,
-    refetch: refetchResources,
-  } = useMyResources(myGroups);
-
-  const loading = groupsLoading || resLoading;
-  const isLeader = myGroups.some((g: MyGroup) => g.my_role === "leader");
-
-  // US-G.3 @author: Uzma Alam — set default group
-  useEffect(() => {
-    if (myGroups.length > 0 && !selectedGroupId) setSelectedGroupId(myGroups[0].id);
+    if (myGroups.length > 0 && !selectedGroupId) {
+      setSelectedGroupId(myGroups[0].id);
+    }
   }, [myGroups, selectedGroupId]);
-  const canDeleteResource = (resource: ResourceWithGroup): boolean => {
-    if (userRole === "admin") {
-      return true;
-    }
 
-    if (String(resource.uploaded_by) === String(userId)) {
-      return true;
-    }
-
-    const group = myGroups.find(
-      (g: MyGroup) => g.id === resource.group_id
-    );
+  const isLeader = (): boolean => {
+    if (!selectedGroupId) return false;
+    const group = myGroups.find(g => g.id === selectedGroupId);
+    if (!group) return false;
 
     return group?.my_role === "leader";
   };
 
-  const handleDeleteResource = async (
-    resource: ResourceWithGroup
-  ) => {
+  const canDeleteResource = (resource: ResourceWithGroup): boolean => {
+    if (!selectedGroupId) return false;
+
+    const isCurrentUser = resource.uploaded_by === resource.uploaded_by;
+    const group = myGroups.find(g => g.id === selectedGroupId);
+    if (!group) return false;
+
+    return group?.my_role === "leader";
+  };
+
+  const handleDeleteResource = async (resource: ResourceWithGroup) => {
     const confirmed = await confirm({
       title: "Delete resource",
       message: `"${resource.file_name}" will be permanently removed. This cannot be undone.`,
@@ -519,9 +596,7 @@ export default function ResourcesPage() {
     setDeletingId(resource.id);
     setDeleteError(null);
 
-    const response = await apiClient.delete<void>(
-      `/resources/${resource.id}`
-    );
+    const response = await apiClient.delete<void>(`/resources/${resource.id}`);
 
     if (response.error) {
       setDeleteError(response.error);
@@ -537,7 +612,12 @@ export default function ResourcesPage() {
     setDeletingId(null);
   };
 
-  const filtered = resources.filter(r => {
+  // Filter by selected group
+  const groupResources = selectedGroupId
+    ? resources.filter(r => r.group_id === selectedGroupId)
+    : resources;
+
+  const filtered = groupResources.filter(r => {
     const matchSearch = r.file_name.toLowerCase().includes(search.toLowerCase()) ||
                         r.group_name.toLowerCase().includes(search.toLowerCase());
     if (!matchSearch) return false;
@@ -575,31 +655,37 @@ export default function ResourcesPage() {
           </div>
         </div>
 
-        {/* AI Study Assistant — chat, explanations, and quizzes */}
-        <AiTutorPanel />
-
         {/* Stats widget — leaders only */}
-        {!loading && isLeader && (
+        {!loading && isLeader() && (
           <StatsWidget resources={resources} myGroups={myGroups} />
         )}
 
-        {/* US-G.3 @author: Uzma Alam — Ask your library */}
+        {/* Group selector + Unified Intelligence Block */}
         {!loading && myGroups.length > 0 && (
-          <div style={{ marginBottom: 4 }}>
-            {myGroups.length > 1 && (
-              <select
-                value={selectedGroupId}
-                onChange={e => setSelectedGroupId(e.target.value)}
-                style={{
-                  padding: "6px 10px", borderRadius: 8, fontSize: 12, marginBottom: 8,
-                  border: `1px solid ${T.border}`, background: T.bg2,
-                  color: T.text, cursor: "pointer", outline: "none",
-                }}
-              >
-                {myGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
+          <div style={{ marginBottom: 20 }}>
+            {myGroups.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: T.text2, display: "block", marginBottom: 6 }}>
+                  Select Group
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={e => setSelectedGroupId(e.target.value)}
+                  style={{
+                    padding: "8px 12px", borderRadius: 8, fontSize: 12, width: "100%", maxWidth: "300px",
+                    border: `1px solid ${T.border}`, background: T.bg2,
+                    color: T.text, cursor: "pointer", outline: "none",
+                  }}
+                >
+                  <option value="">-- Select a group --</option>
+                  {myGroups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
             )}
-            {selectedGroupId && <AskLibrary groupId={selectedGroupId} />}
+            
+            {selectedGroupId && <ResourcesIntelligenceBlock groupId={selectedGroupId} />}
           </div>
         )}
 
@@ -616,10 +702,10 @@ export default function ResourcesPage() {
               color: T.text, fontSize: 13, outline: "none",
             }}
           />
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {(["all", "pdf", "document", "image", "link", "other"] as const).map(t => (
               <button key={t} onClick={() => setFilterType(t)} style={chipStyle(filterType === t)}>
-                {t === "all" ? "All" : t === "pdf" ? "PDFs"
+                {t === "all" ? "All Files" : t === "pdf" ? "PDFs"
                   : t === "document" ? "Documents" : t === "image" ? "Images"
                     : t === "link" ? "Links" : "Other"}
               </button>

@@ -2,14 +2,17 @@
 services/resources-service/main.py
 Resources Service - upload and manage study materials.
 Runs on port 8005
+
+US-D: Added PDF text extraction + content-aware Q&A search (line ~260+)
 """
 import os
 from urllib.parse import urlparse, quote
 from uuid import uuid4, UUID
-
 import httpx
 from fastapi import FastAPI, HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
+import io
+import requests
 
 # ── US-D.1 hardening: server-side upload pipeline validation ────────────────
 SUPABASE_URL              = (os.getenv("SUPABASE_URL") or "").rstrip("/")
@@ -155,6 +158,73 @@ def delete_from_storage(file_url: str) -> bool:
     except httpx.HTTPError:
         return False
 
+
+# ============================================================================
+# US-D: PDF & Image Text Extraction
+# ============================================================================
+
+def extract_pdf_text(file_url: str) -> str:
+    """Extract text from a PDF hosted at file_url."""
+    try:
+        resp = requests.get(file_url, timeout=15)
+        resp.raise_for_status()
+        
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+            return text.strip()[:5000]  # Limit to 5000 chars
+        except ImportError:
+            # Fallback: pypdf2 not installed, return empty
+            return ""
+    except Exception:
+        return ""
+
+
+def extract_image_text(file_url: str) -> str:
+    """Extract text from an image using Tesseract (if available)."""
+    try:
+        resp = requests.get(file_url, timeout=15)
+        resp.raise_for_status()
+        
+        try:
+            from PIL import Image
+            import pytesseract
+            img = Image.open(io.BytesIO(resp.content))
+            text = pytesseract.image_to_string(img)
+            return text.strip()[:2000]  # Limit to 2000 chars
+        except ImportError:
+            return ""
+    except Exception:
+        return ""
+
+
+def extract_txt_content(file_url: str) -> str:
+    """Fetch plain text files."""
+    try:
+        resp = requests.get(file_url, timeout=15)
+        resp.raise_for_status()
+        return resp.text.strip()[:5000]
+    except Exception:
+        return ""
+
+
+def extract_file_content(file_type: str, file_url: str) -> str:
+    """Extract searchable text from file based on type."""
+    file_type_lower = file_type.lower()
+    
+    if "pdf" in file_type_lower:
+        return extract_pdf_text(file_url)
+    elif any(img in file_type_lower for img in ["image", "png", "jpg", "jpeg", "gif", "webp"]):
+        return extract_image_text(file_url)
+    elif any(txt in file_type_lower for txt in ["txt", "md"]):
+        return extract_txt_content(file_url)
+    
+    return ""
+
+
 import sys
 sys.path.append("/shared")
 from shared_models import Resource, Group, GroupMembership, GroupMembershipRole, Base
@@ -225,6 +295,8 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     """
     Register an uploaded resource's metadata.
     (Actual file upload to Supabase happens on the frontend; this saves metadata.)
+    
+    NEW: Also extracts text from PDF/images for content-aware Q&A.
     """
     normalized_type = validate_resource_metadata(file_name, file_url, file_type)
 
@@ -239,6 +311,9 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
     if not membership and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only group members can upload resources")
 
+    # Extract content for searchable indexing
+    extracted_content = extract_file_content(normalized_type, file_url)
+    
     new_resource = Resource(
         id=uuid4(),
         group_id=group_id,
@@ -246,6 +321,7 @@ async def create_resource(group_id: str, file_name: str, file_url: str, file_typ
         file_name=file_name,
         file_url=file_url,
         file_type=normalized_type,
+        content_text=extracted_content,  # Store extracted text
     )
     db.add(new_resource)
     db.commit()
@@ -309,7 +385,7 @@ async def delete_resource(resource_id: str, db: Session = Depends(get_db),
     db.commit()
     return None
 
-# US-G.3 @author: Uzma Alam
+# US-G.3 @author: Uzma Alam — UPDATED to search file content
 @app.post("/groups/{group_id}/resources/ask")
 async def ask_library(
     group_id: str,
@@ -317,7 +393,7 @@ async def ask_library(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Answer a natural-language question using group resource metadata."""
+    """Answer a natural-language question using group resource metadata + content."""
     import os, httpx
 
     # Verify membership
@@ -330,7 +406,7 @@ async def ask_library(
 
     # Get all resources for the group
     resources = (db.query(Resource)
-                   .filter(Resource.group_id == group_id)
+                   .filter(Resource.group_id == group_id, Resource.is_deleted == False)
                    .order_by(Resource.created_at.desc()).all())
 
     if not resources:
@@ -339,11 +415,15 @@ async def ask_library(
             "sources": [],
         }
 
-    # Build context from resource metadata
-    context = "\n".join([
-        f"- {r.file_name} ({r.file_type}) uploaded on {r.created_at.strftime('%Y-%m-%d')} — URL: {r.file_url}"
-        for r in resources
-    ])
+    # Build context from resource metadata + extracted content
+    context_parts = []
+    for r in resources:
+        meta = f"- {r.file_name} ({r.file_type}) uploaded {r.created_at.strftime('%Y-%m-%d')}"
+        if r.content_text:
+            meta += f"\n  Content preview: {r.content_text[:300]}..."
+        context_parts.append(meta)
+    
+    context = "\n".join(context_parts)
 
     prompt = f"""You are a study assistant helping students find resources in their group library.
 
@@ -356,9 +436,13 @@ Answer the question based on the available resources. If relevant files exist, m
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        # simple keyword search
+        # simple keyword search + content search
         keywords = question.lower().split()
-        matches = [r for r in resources if any(k in r.file_name.lower() for k in keywords)]
+        matches = [
+            r for r in resources 
+            if any(k in r.file_name.lower() for k in keywords) 
+            or any(k in (r.content_text or "").lower() for k in keywords)
+        ]
         return {
             "answer": f"Found {len(matches)} file(s) related to your question." if matches else "No matching files found.",
             "sources": [{"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type} for r in matches],
@@ -384,16 +468,16 @@ Answer the question based on the available resources. If relevant files exist, m
     else:
         answer = response.json()["choices"][0]["message"]["content"].strip()
 
-    # Find relevant sources based on keyword matching
+    # Find relevant sources based on keyword + content matching
     keywords = question.lower().split()
     sources = [
         {"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type}
         for r in resources
-        if any(k in r.file_name.lower() for k in keywords)
+        if any(k in r.file_name.lower() for k in keywords) 
+        or any(k in (r.content_text or "").lower() for k in keywords)
     ]
 
     return {"answer": answer, "sources": sources}
-
 
 
 # ============================================================================
