@@ -421,25 +421,46 @@ async def ask_library(
             "sources": [],
         }
 
-    # Build context from resource metadata + extracted content (if column exists)
+    # Build context from resource metadata + extracted content.
+    # Lazy extraction: if a PDF/txt/image has no stored content yet (uploaded
+    # before extraction existed, or the content_text column isn't migrated),
+    # extract it now so questions like "summarize X" actually work.
+    # Capped at 3 extractions per request to keep latency sane.
+    _MAX_LAZY_EXTRACTIONS = 3
+    _extractions_done = 0
+    resource_contents: dict = {}  # resource id -> content str
+
+    for r in resources:
+        content = getattr(r, "content_text", None)
+        if not content and _extractions_done < _MAX_LAZY_EXTRACTIONS:
+            content = extract_file_content(r.file_type, r.file_url)
+            _extractions_done += 1
+            # Persist for next time if the column exists
+            if content and hasattr(Resource, "content_text"):
+                try:
+                    r.content_text = content
+                    db.commit()
+                except Exception:
+                    db.rollback()
+        resource_contents[str(r.id)] = content or ""
+
     context_parts = []
     for r in resources:
         meta = f"- {r.file_name} ({r.file_type}) uploaded {r.created_at.strftime('%Y-%m-%d')}"
-        content = getattr(r, "content_text", None)
+        content = resource_contents.get(str(r.id), "")
         if content:
-            meta += f"\n  Content preview: {content[:300]}..."
+            meta += f"\n  Full content:\n{content[:3000]}"
         context_parts.append(meta)
     
     context = "\n".join(context_parts)
 
-    prompt = f"""You are a study assistant helping students find resources in their group library.
+    prompt = f"""You are a study assistant with access to the group's resource library. Below are the files and, where available, their extracted text content.
 
-Available resources:
 {context}
 
 Student question: {question}
 
-Answer the question based on the available resources. If relevant files exist, mention them by name and say they can be downloaded. Keep your answer concise please."""
+Answer the question directly using the file content above. If asked to summarize a file, write an actual summary of its content. Only if the content is unavailable should you fall back to describing the file and suggesting a download. Be concise."""
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -448,7 +469,7 @@ Answer the question based on the available resources. If relevant files exist, m
         matches = [
             r for r in resources 
             if any(k in r.file_name.lower() for k in keywords) 
-            or any(k in (getattr(r, "content_text", None) or "").lower() for k in keywords)
+            or any(k in resource_contents.get(str(r.id), "").lower() for k in keywords)
         ]
         return {
             "answer": f"Found {len(matches)} file(s) related to your question." if matches else "No matching files found.",
@@ -465,9 +486,9 @@ Answer the question based on the available resources. If relevant files exist, m
             json={
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
+                "max_tokens": 600,
             },
-            timeout=15.0,
+            timeout=30.0,
         )
 
     if response.status_code != 200:
@@ -481,7 +502,7 @@ Answer the question based on the available resources. If relevant files exist, m
         {"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type}
         for r in resources
         if any(k in r.file_name.lower() for k in keywords) 
-        or any(k in (getattr(r, "content_text", None) or "").lower() for k in keywords)
+        or any(k in resource_contents.get(str(r.id), "").lower() for k in keywords)
     ]
 
     return {"answer": answer, "sources": sources}
