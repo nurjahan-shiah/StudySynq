@@ -6,7 +6,7 @@
  * (with a progress bar) then registers its metadata with the backend.
  */
 
-import { useRef, useState, ChangeEvent } from "react";
+import { useRef, useState, ChangeEvent, FormEvent } from "react";
 import { apiClient } from "@/lib/apiClient";
 import { uploadFileToSupabase } from "@/lib/supabaseUpload";
 import type { Resource } from "@/lib/hooks";
@@ -35,6 +35,9 @@ export function ResourceUpload({
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkName, setLinkName] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
 
   async function handleFile(file: File) {
     if (file.size > MAX_MB * 1024 * 1024) {
@@ -79,24 +82,110 @@ export function ResourceUpload({
     e.target.value = ""; // allow re-selecting the same file later
   }
 
+  async function handleLink(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const name = linkName.trim();
+    const url = linkUrl.trim();
+    if (!name || !url) {
+      setError("Enter both a link name and URL.");
+      setPhase("error");
+      return;
+    }
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") throw new Error();
+    } catch {
+      setError("Enter a valid https URL.");
+      setPhase("error");
+      return;
+    }
+
+    setError(null);
+    setPhase("saving");
+    const params = new URLSearchParams({
+      file_name: name,
+      file_url: url,
+      file_type: "link",
+    });
+    const res = await apiClient.post<Resource>(`/groups/${groupId}/resources?${params}`, {});
+    if (res.error || !res.data) {
+      setError(res.error ?? "Failed to save link");
+      setPhase("error");
+      return;
+    }
+    onUploaded(res.data);
+    setLinkName("");
+    setLinkUrl("");
+    setShowLinkForm(false);
+    setPhase("idle");
+  }
+
   const busy = phase === "uploading" || phase === "saving";
 
   return (
     <div style={{ marginBottom: 16 }}>
       <input ref={inputRef} type="file" hidden onChange={onPick} />
 
-      <button
-        onClick={() => inputRef.current?.click()}
-        disabled={busy}
-        style={{
-          padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-          border: "none", background: T.red, color: "#fff",
-          cursor: busy ? "default" : "pointer",
-          opacity: busy ? 0.7 : 1,
-        }}
-      >
-        {phase === "uploading" ? `Uploading… ${progress}%` : phase === "saving" ? "Saving…" : "+ Upload file"}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          style={{
+            padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: "none", background: T.red, color: "#fff",
+            cursor: busy ? "default" : "pointer",
+            opacity: busy ? 0.7 : 1,
+          }}
+        >
+          {phase === "uploading" ? `Uploading… ${progress}%` : "+ Upload file"}
+        </button>
+        <button
+          onClick={() => { setShowLinkForm((visible) => !visible); setError(null); setPhase("idle"); }}
+          disabled={busy}
+          style={{
+            padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: `1px solid ${T.border}`, background: "transparent", color: T.text,
+            cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1,
+          }}
+        >
+          + Add link
+        </button>
+      </div>
+
+      {showLinkForm && (
+        <form onSubmit={handleLink} style={{
+          display: "grid", gridTemplateColumns: "minmax(140px, 1fr) minmax(220px, 2fr) auto",
+          gap: 8, marginTop: 10,
+        }}>
+          <input
+            value={linkName}
+            onChange={(event) => setLinkName(event.target.value)}
+            placeholder="Link name"
+            maxLength={255}
+            style={{
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`,
+              background: T.bg3, color: T.text, fontSize: 12,
+            }}
+          />
+          <input
+            value={linkUrl}
+            onChange={(event) => setLinkUrl(event.target.value)}
+            placeholder="https://example.com"
+            type="url"
+            style={{
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`,
+              background: T.bg3, color: T.text, fontSize: 12,
+            }}
+          />
+          <button type="submit" disabled={busy} style={{
+            padding: "8px 14px", borderRadius: 8, border: "none",
+            background: T.red, color: "#fff", fontSize: 12, fontWeight: 600,
+            cursor: busy ? "default" : "pointer",
+          }}>
+            {phase === "saving" ? "Saving…" : "Save link"}
+          </button>
+        </form>
+      )}
 
       {fileName && busy && (
         <div style={{ maxWidth: 280, marginTop: 8 }}>

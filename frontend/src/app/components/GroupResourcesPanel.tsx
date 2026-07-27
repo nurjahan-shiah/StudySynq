@@ -7,7 +7,7 @@
  * Wire into groups/[id]/page.tsx's "resources" tab.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/apiClient";
 import { useGroupResources, type Resource } from "@/lib/hooks";
 import { ResourceUpload } from "./ResourceUpload";
@@ -24,6 +24,7 @@ const T = {
 
 function fileIcon(fileType: string): string {
   const t = fileType.toLowerCase();
+  if (t === "link") return "↗";
   if (t.includes("pdf")) return "⊟";
   if (t.includes("image") || t.includes("png") || t.includes("jpg") || t.includes("jpeg") || t.includes("gif") || t.includes("webp")) return "⊞";
   if (t.includes("word") || t.includes("doc")) return "◫";
@@ -45,9 +46,19 @@ export function GroupResourcesPanel({
   canManage: boolean;
   userId: string;
 }) {
-  const { data: resources, loading, refetch } = useGroupResources(groupId);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [resourceType, setResourceType] =
+    useState<"all" | "pdf" | "document" | "image" | "link">("all");
+  const { data: resources, loading, refetch } =
+    useGroupResources(groupId, debouncedSearch, resourceType);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Resource | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   async function handleDelete(r: Resource) {
     setDeletingId(r.id);
@@ -61,17 +72,51 @@ export function GroupResourcesPanel({
     <div style={{ maxWidth: 640 }}>
       <ResourceUpload groupId={groupId} onUploaded={() => refetch()} />
 
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search resources…"
+          aria-label="Search group resources"
+          style={{
+            flex: "1 1 210px", minWidth: 0, padding: "8px 11px",
+            borderRadius: 8, border: `1px solid ${T.border}`,
+            background: T.bg3, color: T.text, fontSize: 12,
+          }}
+        />
+        <select
+          value={resourceType}
+          onChange={(event) => setResourceType(event.target.value as typeof resourceType)}
+          aria-label="Filter resources by type"
+          style={{
+            flex: "0 1 150px", padding: "8px 10px", borderRadius: 8,
+            border: `1px solid ${T.border}`, background: T.bg3,
+            color: T.text, fontSize: 12,
+          }}
+        >
+          <option value="all">All types</option>
+          <option value="pdf">PDFs</option>
+          <option value="document">Documents</option>
+          <option value="image">Images</option>
+          <option value="link">Links</option>
+        </select>
+      </div>
+
       {loading ? (
         <p style={{ fontSize: 13, color: T.text2 }}>Loading…</p>
       ) : (resources ?? []).length === 0 ? (
         <div style={{ textAlign: "center", padding: "30px 0", color: T.text2 }}>
           <div style={{ fontSize: 28, marginBottom: 8 }}>⊟</div>
-          <p style={{ fontSize: 13, margin: 0 }}>No files shared yet.</p>
+          <p style={{ fontSize: 13, margin: 0 }}>
+            {search || resourceType !== "all" ? "No matching resources." : "No resources shared yet."}
+          </p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {(resources ?? []).map((r) => {
             const canDelete = canManage || r.uploaded_by === userId;
+            const isLink = r.file_type.toLowerCase() === "link";
             return (
               <div
                 key={r.id}
@@ -95,7 +140,7 @@ export function GroupResourcesPanel({
 
                 <a
                   href={r.file_url}
-                  download={r.file_name}
+                  download={isLink ? undefined : r.file_name}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -104,7 +149,7 @@ export function GroupResourcesPanel({
                     border: `1px solid ${T.red}30`, flexShrink: 0,
                   }}
                 >
-                  {"↓ Download"}
+                  {isLink ? "Open link" : "↓ Download"}
                 </a>
 
                 {canDelete && (

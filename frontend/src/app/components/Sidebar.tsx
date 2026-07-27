@@ -1,11 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef, ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, FormEvent, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { Logo } from './Logo';
 import { BellIcon } from './BellIcon';
 import { ProfileSetupModal } from './ProfileSetupModal';
+import {
+  changeAccountEmail,
+  changeAccountPassword,
+  deactivateAccount,
+  getMyProfile,
+  reactivateAccount,
+  type FullProfile,
+} from '@/lib/social';
 
 type Theme = 'dark' | 'light';
 
@@ -115,8 +123,13 @@ function ProfilePanel({
   onClose,
   onLogout,
   onDeactivate,
+  onReactivate,
   onNotificationPrefs,
   onEditProfile,
+  onChangeEmail,
+  onChangePassword,
+  profileComplete,
+  isActive,
 }: {
   user: UserInfo;
   theme: Theme;
@@ -124,8 +137,13 @@ function ProfilePanel({
   onClose: () => void;
   onLogout: () => void;
   onDeactivate: () => void;
+  onReactivate: () => void;
   onNotificationPrefs: () => void;
   onEditProfile: () => void;
+  onChangeEmail: () => void;
+  onChangePassword: () => void;
+  profileComplete: boolean;
+  isActive: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -328,7 +346,7 @@ function ProfilePanel({
 
         <Row
           icon="👤"
-          label="Complete your profile"
+          label={user.role === 'admin' ? 'Edit admin profile' : profileComplete ? 'Edit profile' : 'Complete your profile'}
           onClick={onEditProfile}
         />
 
@@ -370,9 +388,9 @@ function ProfilePanel({
           onClick={onNotificationPrefs}
         />
 
-        <Row icon="✉" label="Change email" />
+        <Row icon="✉" label="Change email" onClick={onChangeEmail} />
 
-        <Row icon="🔒" label="Change password" />
+        <Row icon="🔒" label="Change password" onClick={onChangePassword} />
 
         <Row icon="↩" label="Log out" onClick={onLogout} />
 
@@ -385,9 +403,9 @@ function ProfilePanel({
         >
           <Row
             icon="⚠"
-            label="Deactivate account"
-            onClick={onDeactivate}
-            danger
+            label={isActive ? 'Deactivate account' : 'Activate profile'}
+            onClick={isActive ? onDeactivate : onReactivate}
+            danger={isActive}
           />
         </div>
       </div>
@@ -414,6 +432,186 @@ function ProfilePanel({
 }
 
 // ── Sidebar (nav only — no avatar here) ───────────────────────────────────────
+
+type AccountAction = 'email' | 'password' | 'deactivate';
+
+function AccountActionModal({
+  mode, userId, currentEmail, onClose, onUpdated,
+}: {
+  mode: AccountAction;
+  userId: string;
+  currentEmail: string;
+  onClose: () => void;
+  onUpdated: (profile: FullProfile) => void;
+}) {
+  const [newEmail, setNewEmail] = useState(currentEmail);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [reason, setReason] = useState('');
+  const [period, setPeriod] = useState<'30' | '60' | 'permanent'>('30');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
+
+  const title = mode === 'email' ? 'Change email' : mode === 'password' ? 'Change password' : 'Deactivate account';
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    if (mode === 'password' && newPassword !== confirmPassword) {
+      setError('New passwords do not match.');
+      return;
+    }
+    if (mode === 'deactivate' && reason.trim().length < 3) {
+      setError('Please provide a reason for deactivation.');
+      return;
+    }
+
+    setSubmitting(true);
+    const response = mode === 'email'
+      ? await changeAccountEmail(userId, { new_email: newEmail.trim(), current_password: currentPassword })
+      : mode === 'password'
+        ? await changeAccountPassword(userId, { current_password: currentPassword, new_password: newPassword })
+        : await deactivateAccount(userId, {
+            reason: reason.trim(),
+            period_days: period === 'permanent' ? null : Number(period) as 30 | 60,
+          });
+    setSubmitting(false);
+
+    if (response.error) {
+      setError(response.error);
+      return;
+    }
+    if (mode !== 'password' && response.data) onUpdated(response.data as FullProfile);
+    setSuccess(true);
+  }
+
+  async function activateProfile() {
+    setReactivating(true);
+    setError('');
+    const response = await reactivateAccount(userId);
+    setReactivating(false);
+    if (response.error || !response.data) {
+      setError(response.error ?? 'Could not activate the profile.');
+      return;
+    }
+    onUpdated(response.data);
+    onClose();
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 310, background: 'rgba(0,0,0,.5)' }} />
+      <div role="dialog" aria-modal="true" aria-labelledby="account-action-title" style={{
+        position: 'fixed', zIndex: 311, top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 'min(430px, calc(100vw - 32px))', borderRadius: 16, padding: 24,
+        background: T.bg2, border: `1px solid ${T.border}`, boxShadow: '0 18px 60px rgba(0,0,0,.35)',
+      }}>
+        {success ? (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: 48, height: 48, margin: '0 auto 12px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,184,148,.14)', color: 'var(--ss-green)', fontSize: 22,
+            }}>✓</div>
+            <h2 id="account-action-title" style={{ color: T.text, fontSize: 17, margin: '0 0 8px' }}>
+              {mode === 'deactivate' ? 'Account deactivated' : mode === 'email' ? 'Email updated' : 'Password updated'}
+            </h2>
+            <p style={{ color: T.text2, fontSize: 12.5, lineHeight: 1.55, margin: '0 0 18px' }}>
+              {mode === 'deactivate'
+                ? `Your profile is inactive${period === 'permanent' ? ' permanently' : ` for ${period} days`}.`
+                : 'Your account changes were saved successfully.'}
+            </p>
+            {mode === 'deactivate' ? (
+              <button className="ss-btn-primary" onClick={activateProfile} disabled={reactivating}>
+                {reactivating ? 'Activating…' : 'Activate Profile'}
+              </button>
+            ) : (
+              <button className="ss-btn-primary" onClick={onClose}>Done</button>
+            )}
+            {error && <p style={{ color: T.red, fontSize: 12, margin: '12px 0 0' }}>{error}</p>}
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+              <h2 id="account-action-title" style={{ color: T.text, fontSize: 17, margin: 0 }}>{title}</h2>
+              <button type="button" onClick={onClose} aria-label="Close" style={{
+                border: 0, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 18,
+              }}>×</button>
+            </div>
+
+            {mode === 'email' && (
+              <>
+                <p style={{ color: T.text2, fontSize: 12, margin: '0 0 16px' }}>Enter the new admin email and confirm your password.</p>
+                <ModalField label="New email">
+                  <input className="ss-input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required />
+                </ModalField>
+                <ModalField label="Current password">
+                  <input className="ss-input" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+                </ModalField>
+              </>
+            )}
+
+            {mode === 'password' && (
+              <>
+                <p style={{ color: T.text2, fontSize: 12, margin: '0 0 16px' }}>Use at least 8 characters with a letter and number.</p>
+                <ModalField label="Current password">
+                  <input className="ss-input" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+                </ModalField>
+                <ModalField label="New password">
+                  <input className="ss-input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} minLength={8} required />
+                </ModalField>
+                <ModalField label="Confirm new password">
+                  <input className="ss-input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} minLength={8} required />
+                </ModalField>
+              </>
+            )}
+
+            {mode === 'deactivate' && (
+              <>
+                <p style={{ color: T.text2, fontSize: 12, lineHeight: 1.5, margin: '0 0 16px' }}>
+                  Access will be disabled after your current session ends. You can activate the profile again now.
+                </p>
+                <ModalField label="Reason">
+                  <textarea className="ss-input" value={reason} onChange={e => setReason(e.target.value.slice(0, 500))}
+                    rows={3} placeholder="Why are you deactivating this account?" required
+                    style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+                </ModalField>
+                <ModalField label="Deactivation period">
+                  <select className="ss-input" value={period} onChange={e => setPeriod(e.target.value as typeof period)}>
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="permanent">Permanent</option>
+                  </select>
+                </ModalField>
+              </>
+            )}
+
+            {error && <p role="alert" style={{ color: T.red, fontSize: 12, margin: '0 0 12px' }}>{error}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 18 }}>
+              <button type="button" className="ss-btn-ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" className="ss-btn-primary" disabled={submitting}
+                style={mode === 'deactivate' ? { background: T.red } : undefined}>
+                {submitting ? 'Saving…' : mode === 'deactivate' ? 'Confirm deactivation' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </>
+  );
+}
+
+function ModalField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label style={{ display: 'block', color: T.text, fontSize: 12, fontWeight: 700, marginBottom: 13 }}>
+      <span style={{ display: 'block', marginBottom: 6 }}>{label}</span>
+      <span style={{ display: 'block' }}>{children}</span>
+    </label>
+  );
+}
 
 export function Sidebar() {
   const router = useRouter();
@@ -519,14 +717,30 @@ export function ProfileButton() {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [accountAction, setAccountAction] = useState<AccountAction | null>(null);
   const [userId, setUserId] = useState('');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [isActive, setIsActive] = useState(true);
 
   const [user, setUser] = useState<UserInfo>({
     name: '',
     email: '',
     role: '',
   });
+
+  const applyProfile = useCallback((profile: FullProfile) => {
+    setUser({ name: profile.name, email: profile.email, role: profile.role });
+    setProfileComplete(profile.profile_complete);
+    setIsActive(profile.is_active);
+    localStorage.setItem('ss_user_name', profile.name);
+    localStorage.setItem('ss_user_email', profile.email);
+  }, []);
+
+  const refreshProfile = useCallback(async (id: string) => {
+    const response = await getMyProfile(id);
+    if (response.data) applyProfile(response.data);
+  }, [applyProfile]);
 
   useEffect(() => {
     const stored = (localStorage.getItem('ss-theme') as Theme) || 'dark';
@@ -538,8 +752,10 @@ export function ProfileButton() {
       email: localStorage.getItem('ss_user_email') ?? '',
       role: localStorage.getItem('ss_user_role') ?? '',
     });
-    setUserId(localStorage.getItem('ss_user_id') ?? '');
-  }, []);
+    const id = localStorage.getItem('ss_user_id') ?? '';
+    setUserId(id);
+    if (id) void refreshProfile(id);
+  }, [refreshProfile]);
 
   function toggleTheme() {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';
@@ -556,10 +772,10 @@ export function ProfileButton() {
     await apiClient.logout();
   }
 
-  async function handleDeactivate() {
-    if (confirm('Deactivate your account? This cannot be undone.')) {
-      await handleLogout();
-    }
+  async function handleReactivate() {
+    if (!userId) return;
+    const response = await reactivateAccount(userId);
+    if (response.data) applyProfile(response.data);
   }
 
   const initial = (user.name || user.email || '?')[0].toUpperCase();
@@ -606,7 +822,21 @@ export function ProfileButton() {
             onToggleTheme={toggleTheme}
             onClose={() => setProfileOpen(false)}
             onLogout={handleLogout}
-            onDeactivate={handleDeactivate}
+            onDeactivate={() => {
+              setProfileOpen(false);
+              setAccountAction('deactivate');
+            }}
+            onReactivate={handleReactivate}
+            profileComplete={profileComplete}
+            isActive={isActive}
+            onChangeEmail={() => {
+              setProfileOpen(false);
+              setAccountAction('email');
+            }}
+            onChangePassword={() => {
+              setProfileOpen(false);
+              setAccountAction('password');
+            }}
             onNotificationPrefs={() => {
               setProfileOpen(false);
               router.push('/notifications/preferences');
@@ -622,7 +852,19 @@ export function ProfileButton() {
       {editProfileOpen && userId && (
         <ProfileSetupModal
           userId={userId}
+          role={user.role}
           onClose={() => setEditProfileOpen(false)}
+          onSaved={() => void refreshProfile(userId)}
+        />
+      )}
+
+      {accountAction && userId && (
+        <AccountActionModal
+          mode={accountAction}
+          userId={userId}
+          currentEmail={user.email}
+          onClose={() => setAccountAction(null)}
+          onUpdated={applyProfile}
         />
       )}
     </>

@@ -8,7 +8,7 @@ from urllib.parse import urlparse, quote
 from uuid import uuid4, UUID
 
 import httpx
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
 
 # ── US-D.1 hardening: server-side upload pipeline validation ────────────────
@@ -180,9 +180,12 @@ async def health():
     return {"status": "ok", "service": "resources-service"}
 
 @app.get("/groups/{group_id}/resources", response_model=list[ResourceResponse])
-async def list_resources(group_id: UUID, db: Session = Depends(get_db),
+async def list_resources(group_id: UUID,
+                         search: str | None = Query(default=None, max_length=100),
+                         resource_type: str | None = Query(default=None, alias="type"),
+                         db: Session = Depends(get_db),
                          current_user: dict = Depends(get_current_user)):
-    """List all resources in a group."""
+    """List searchable, type-filterable resource metadata for a group."""
     membership = (db.query(GroupMembership)
                     .filter(GroupMembership.group_id == group_id,
                             GroupMembership.user_id == current_user["user_id"])
@@ -190,10 +193,30 @@ async def list_resources(group_id: UUID, db: Session = Depends(get_db),
     if not membership and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Not a member of this group")
 
-    return (db.query(Resource)
-              .filter(Resource.group_id == group_id,
-                      Resource.is_deleted == False)  # noqa: E712 — hide moderated (US-F.2)
-              .order_by(Resource.created_at.desc()).all())
+    query = db.query(Resource).filter(
+        Resource.group_id == group_id,
+        Resource.is_deleted == False,  # noqa: E712
+    )
+
+    if search and search.strip():
+        query = query.filter(Resource.file_name.ilike(f"%{search.strip()}%"))
+
+    categories = {
+        "pdf": {"pdf"},
+        "document": {"doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md"},
+        "image": {"png", "jpg", "jpeg", "gif", "webp"},
+        "link": {"link"},
+    }
+    if resource_type and resource_type != "all":
+        normalized_category = resource_type.strip().lower()
+        if normalized_category not in categories:
+            raise HTTPException(
+                status_code=422,
+                detail="Resource type must be one of: pdf, document, image, link",
+            )
+        query = query.filter(Resource.file_type.in_(categories[normalized_category]))
+
+    return query.order_by(Resource.created_at.desc()).all()
 
 @app.post("/groups/{group_id}/resources", response_model=ResourceResponse, status_code=201)
 async def create_resource(group_id: str, file_name: str, file_url: str, file_type: str,

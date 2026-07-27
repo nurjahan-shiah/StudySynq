@@ -15,7 +15,7 @@ US-F.1 endpoints
       DELETE /admin/courses/:id          — remove course
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Optional
 
@@ -35,9 +35,11 @@ from shared_models import (
     StudySession, Base
 )
 from shared_time import iso_utc
-from shared_database import engine, get_db
+from shared_database import engine, get_db, run_light_migrations
 from shared_auth import require_admin as require_admin_user
-from shared_schemas import CourseCreate, CourseResponse, CourseUpdate
+from shared_schemas import (
+    AccountDeactivationRequest, CourseCreate, CourseResponse, CourseUpdate
+)
 from shared_notifications import create_group_notifications
 
 
@@ -138,6 +140,7 @@ def _ensure_soft_delete_columns():
 async def lifespan(app: FastAPI):
     print("⚙️  Admin Service starting…")
     Base.metadata.create_all(bind=engine)
+    run_light_migrations(engine)
     _ensure_is_active_column()
     _ensure_soft_delete_columns()
     yield
@@ -161,6 +164,8 @@ class UserAdminView(BaseModel):
     email: str
     role: str
     is_active: bool
+    deactivation_reason: Optional[str] = None
+    deactivated_until: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -466,6 +471,8 @@ async def list_users(
                     else str(user.role)
                 ),
                 is_active=bool(is_active),
+                deactivation_reason=user.deactivation_reason,
+                deactivated_until=user.deactivated_until,
                 created_at=user.created_at,
             )
         )
@@ -483,6 +490,7 @@ async def list_users(
 )
 async def deactivate_user(
     user_id: str,
+    body: AccountDeactivationRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_user),
 ):
@@ -507,14 +515,26 @@ async def deactivate_user(
         )
 
     from sqlalchemy import text
+    now = datetime.utcnow()
+    deactivated_until = (
+        now + timedelta(days=body.period_days)
+        if body.period_days
+        else None
+    )
 
     db.execute(
         text(
             "UPDATE users "
-            "SET is_active = FALSE "
+            "SET is_active = FALSE, deactivation_reason = :reason, "
+            "deactivated_at = :deactivated_at, deactivated_until = :deactivated_until "
             "WHERE id = :uid"
         ),
-        {"uid": user_id}
+        {
+            "uid": user_id,
+            "reason": body.reason,
+            "deactivated_at": now,
+            "deactivated_until": deactivated_until,
+        }
     )
 
     log_action(
@@ -522,7 +542,10 @@ async def deactivate_user(
         current_user["user_id"],
         "deactivate_user",
         user_id,
-        f"Deactivated {user.email}"
+        (
+            f"Deactivated {user.email}; reason: {body.reason}; "
+            f"period: {body.period_days or 'permanent'}"
+        )
     )
 
     db.commit()
@@ -530,6 +553,7 @@ async def deactivate_user(
     return {
         "status": "deactivated",
         "user_id": user_id,
+        "deactivated_until": deactivated_until.isoformat() if deactivated_until else None,
         "logged_at": datetime.utcnow().isoformat(),
     }
 
@@ -560,7 +584,8 @@ async def reactivate_user(
     db.execute(
         text(
             "UPDATE users "
-            "SET is_active = TRUE "
+            "SET is_active = TRUE, deactivation_reason = NULL, "
+            "deactivated_at = NULL, deactivated_until = NULL "
             "WHERE id = :uid"
         ),
         {"uid": user_id}

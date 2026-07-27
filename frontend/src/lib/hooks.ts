@@ -93,6 +93,18 @@ export interface ResourceWithGroup extends Resource {
   group_name: string;
 }
 
+export interface GroupActivity {
+  id: string;
+  type: "member_joined" | "session_created" | "resource_uploaded" | "announcement_posted";
+  title: string;
+  description: string | null;
+  actor_id: string;
+  actor_name: string;
+  occurred_at: string;
+  target_id: string;
+  target_url: string | null;
+}
+
 export interface Recommendation {
   group_id: string;
   name: string;
@@ -447,8 +459,20 @@ export function useGroupSessions(groupId: string) {
 
 // ── Resources for a single group (US-D.1 / US-D.2) ───────────────────────────
 
-export function useGroupResources(groupId: string) {
-  return useFetch<Resource[]>(`/groups/${groupId}/resources`, !groupId);
+export function useGroupResources(
+  groupId: string,
+  search = "",
+  resourceType: "all" | "pdf" | "document" | "image" | "link" = "all",
+) {
+  const query = new URLSearchParams();
+  if (search.trim()) query.set("search", search.trim());
+  if (resourceType !== "all") query.set("type", resourceType);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return useFetch<Resource[]>(`/groups/${groupId}/resources${suffix}`, !groupId);
+}
+
+export function useGroupActivity(groupId: string) {
+  return useFetch<GroupActivity[]>(`/groups/${groupId}/activity`, !groupId);
 }
 
 // ── Session detail with attendees (US-C.5) ────────────────────────────────────
