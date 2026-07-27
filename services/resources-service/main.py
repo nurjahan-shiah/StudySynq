@@ -454,15 +454,7 @@ async def ask_library(
     
     context = "\n".join(context_parts)
 
-    prompt = f"""You are a study assistant with access to the group's resource library. Below are the files and, where available, their extracted text content.
-
-{context}
-
-Student question: {question}
-
-Answer the question directly using the file content above. If asked to summarize a file, write an actual summary of its content. Only if the content is unavailable should you fall back to describing the file and suggesting a download. Be concise."""
-
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         # simple keyword search + content search
         keywords = question.lower().split()
@@ -476,25 +468,71 @@ Answer the question directly using the file content above. If asked to summarize
             "sources": [{"file_name": r.file_name, "file_url": r.file_url, "file_type": r.file_type} for r in matches],
         }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 600,
-            },
-            timeout=30.0,
-        )
+    # ── Anthropic call with native PDF reading ──────────────────────────────
+    # PDFs are attached as base64 document blocks so Claude reads them
+    # directly (text, layout, even scanned pages) — no PyPDF2 needed.
+    import base64
 
-    if response.status_code != 200:
+    _MAX_PDFS = 3                      # attach at most 3 PDFs per question
+    _MAX_PDF_BYTES = 10 * 1024 * 1024  # skip PDFs over 10 MB
+
+    content_blocks: list = []
+    attached_names: list[str] = []
+
+    for r in resources:
+        if "pdf" in (r.file_type or "").lower() and len(attached_names) < _MAX_PDFS:
+            pdf_bytes = _fetch_bytes(r.file_url)
+            if pdf_bytes and len(pdf_bytes) <= _MAX_PDF_BYTES:
+                content_blocks.append({
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": base64.b64encode(pdf_bytes).decode("utf-8"),
+                    },
+                })
+                attached_names.append(r.file_name)
+
+    attached_note = (
+        f"Attached files: {', '.join(attached_names)}." if attached_names
+        else "No files could be attached."
+    )
+    content_blocks.append({
+        "type": "text",
+        "text": f"""Library file list:
+{context}
+
+{attached_note}
+
+Student question: {question}
+
+Answer the question directly using the attached file content. If asked to summarize a file, write an actual summary. Only if the content is unavailable should you describe the file and suggest a download. Be concise.""",
+    })
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 700,
+                    "messages": [{"role": "user", "content": content_blocks}],
+                },
+                timeout=60.0,
+            )
+        if response.status_code != 200:
+            print(f"[resources-service] anthropic error {response.status_code}: {response.text[:300]}")
+            answer = "Could not generate an answer at this time."
+        else:
+            answer = response.json()["content"][0]["text"].strip()
+    except Exception as e:
+        print(f"[resources-service] anthropic call failed: {e}")
         answer = "Could not generate an answer at this time."
-    else:
-        answer = response.json()["choices"][0]["message"]["content"].strip()
 
     # Find relevant sources based on keyword + content matching
     keywords = question.lower().split()
@@ -554,12 +592,12 @@ async def ai_tutor(
     if body.mode == "quiz":
         system_prompt += "\n" + _QUIZ_PROMPT
 
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         return AiTutorResponse(
             reply=(
                 "The AI Study Assistant isn't configured on this deployment yet "
-                "(missing GROQ_API_KEY). Ask an admin to enable it."
+                "(missing ANTHROPIC_API_KEY). Ask an admin to enable it."
             ),
             note="ai_unconfigured",
         )
@@ -573,28 +611,36 @@ async def ai_tutor(
     if not history:
         raise HTTPException(status_code=422, detail="messages must contain user/assistant turns")
 
+    # Anthropic requires the conversation to start with a user turn.
+    while history and history[0]["role"] != "user":
+        history.pop(0)
+    if not history:
+        raise HTTPException(status_code=422, detail="messages must contain a user turn")
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
+                "https://api.anthropic.com/v1/messages",
                 headers={
-                    "Authorization": f"Bearer {api_key}",
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [{"role": "system", "content": system_prompt}] + history,
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 900,
-                    "temperature": 0.4,
+                    "system": system_prompt,
+                    "messages": history,
                 },
-                timeout=30.0,
+                timeout=60.0,
             )
         if response.status_code != 200:
+            print(f"[resources-service] anthropic error {response.status_code}: {response.text[:300]}")
             return AiTutorResponse(
                 reply="The study assistant is having trouble right now — try again in a moment.",
                 note="ai_error",
             )
-        reply = response.json()["choices"][0]["message"]["content"].strip()
+        reply = response.json()["content"][0]["text"].strip()
         return AiTutorResponse(reply=reply)
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
         return AiTutorResponse(
