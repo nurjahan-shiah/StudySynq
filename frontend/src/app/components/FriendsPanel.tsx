@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "./ConfirmProvider";
 import {
   acceptFriendRequest,
   blockUser,
@@ -88,6 +89,7 @@ function SmallButton({
 }
 
 export function FriendsPanel() {
+  const confirm = useConfirm();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("friends");
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -128,13 +130,23 @@ export function FriendsPanel() {
     load();
   }
 
-  function handleBlock(userId: string, name: string) {
-    if (!confirm(`Block ${name}? You'll be unfriended and won't see each other's posts.`)) return;
+  async function handleBlock(userId: string, name: string) {
+    const ok = await confirm({
+      title: `Block ${name}?`,
+      message: "You'll be unfriended and won't see each other's posts.",
+      confirmLabel: "Block",
+    });
+    if (!ok) return;
     act(userId, () => blockUser(userId));
   }
 
-  function handleRemove(userId: string, name: string) {
-    if (!confirm(`Remove ${name} from your friends?`)) return;
+  async function handleRemove(userId: string, name: string) {
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      message: "They'll be removed from your friends list. You can send a new request later.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     act(userId, () => removeFriend(userId));
   }
 

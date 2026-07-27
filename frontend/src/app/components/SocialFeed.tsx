@@ -21,6 +21,7 @@ import {
   type PostComment,
   type UserCard,
 } from "@/lib/social";
+import { useConfirm } from "./ConfirmProvider";
 import type { MyGroup } from "@/lib/hooks";
 
 const T = {
@@ -308,6 +309,7 @@ function Comments({ postId, onCountChange }: { postId: string; onCountChange: (n
 // ── Post card ────────────────────────────────────────────────────────────────
 
 function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => void }) {
+  const confirm = useConfirm();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likeCount, setLikeCount] = useState(post.like_count);
   const [commentCount, setCommentCount] = useState(post.comment_count);
@@ -332,7 +334,12 @@ function PostCard({ post, onDeleted }: { post: Post; onDeleted: (id: string) => 
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this post?")) return;
+    const ok = await confirm({
+      title: "Delete post",
+      message: "This post and its comments will be permanently removed.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     const res = await deletePost(post.id);
     if (!res.error) onDeleted(post.id);
   }
