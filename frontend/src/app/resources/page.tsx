@@ -4,6 +4,7 @@
 // + Added "All Files" dropdown option + refined visual design
 
 import { useState, useEffect, CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar, ProfileButton } from "@/app/components/Sidebar";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { useConfirm } from "@/app/components/ConfirmProvider";
@@ -14,7 +15,6 @@ import {
   askLibrary,
   type ResourceWithGroup,
   type MyGroup,
-  type UserRole,
 } from "@/lib/hooks";
 
 const T = {
@@ -547,6 +547,8 @@ function ResourceRow({
 }
 
 export default function ResourcesPage() {
+  const router = useRouter();
+  const [userId, setUserId] = useState("");
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "pdf" | "document" | "image" | "link" | "other">("all");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
@@ -554,8 +556,15 @@ export default function ResourcesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const { data: resources, loading, error, refetch: refetchResources } = useMyResources(undefined as never);
-  const { data: myGroups, loading: groupsLoading } = useMyGroups(undefined as never);
+  useEffect(() => {
+    const id = localStorage.getItem("ss_user_id");
+    if (!id) { router.push("/login"); return; }
+    setUserId(id);
+  }, [router]);
+
+  const { data: myGroups, loading: groupsLoading } = useMyGroups(userId);
+  const { data: resources, loading: resourcesLoading, error, refetch: refetchResources } = useMyResources(myGroups);
+  const loading = groupsLoading || resourcesLoading;
   const confirm = useConfirm();
 
   useEffect(() => {
