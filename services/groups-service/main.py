@@ -56,7 +56,7 @@ def _actor_name(db: Session, user_id) -> str:
 
 
 def _notify_user(db: Session, user_id, ntype, title, message, link=None, group_id=None):
-    """Best-effort single-user notification — never breaks the core action."""
+    """Best-effort single-user notification â€” never breaks the core action."""
     try:
         create_notification(db, user_id=user_id, type=ntype, title=title,
                             message=message, link=link, group_id=group_id)
@@ -89,10 +89,10 @@ def init_db():
 
 async def lifespan(app: FastAPI):
     """Startup and shutdown."""
-    print("👥 Groups Service starting...")
+    print("ðŸ‘¥ Groups Service starting...")
     init_db()
     yield
-    print("🛑 Groups Service shutting down...")
+    print("ðŸ›‘ Groups Service shutting down...")
 
 app = FastAPI(
     title="StudySynq Groups Service",
@@ -209,7 +209,7 @@ async def list_groups(
     Only authenticated users can list groups.
     """
     groups = db.query(Group).filter(Group.is_public == True,
-                                    Group.is_deleted == False).all()  # noqa: E712 — hide moderated (US-F.2)
+                                    Group.is_deleted == False).all()  # noqa: E712 â€” hide moderated (US-F.2)
     
     return [
         GroupResponse(
@@ -587,7 +587,7 @@ async def delete_group(
 
     db.commit()
 
-    # Members otherwise lose access with zero warning — notify everyone but the deleter.
+    # Members otherwise lose access with zero warning â€” notify everyone but the deleter.
     remaining_members = (db.query(GroupMembership)
                             .filter(GroupMembership.group_id == group_id)
                             .all())
@@ -611,7 +611,7 @@ async def join_group(
     Join a public group as a member.
 
     Uses _get_group_or_404 rather than a bare id lookup so that groups an
-    admin has moderated (is_deleted) are unjoinable — previously this
+    admin has moderated (is_deleted) are unjoinable â€” previously this
     endpoint was the one place that skipped that check, which meant a
     soft-deleted group could still be joined by anyone holding its id.
     """
@@ -801,7 +801,7 @@ async def add_group_member(
         user_name=user.name,
         user_email=user.email,
         membership_role=membership.role.value,
-        joined_at=membership.joined_at
+        joined_at=getattr(membership, 'joined_at', None)
     )
 
 
@@ -978,7 +978,7 @@ async def update_group_member_role(
         user_name=user.name,
         user_email=user.email,
         membership_role=membership.role.value,
-        joined_at=membership.joined_at
+        joined_at=getattr(membership, 'joined_at', None)
     )
 
 
