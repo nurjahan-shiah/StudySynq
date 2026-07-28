@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/apiClient';
 import { Logo, LogoIcon } from './Logo';
 import { BellIcon } from './BellIcon';
 import { ProfileSetupModal } from './ProfileSetupModal';
+import { ProductTour } from './ProductTour';
 import {
   changeAccountEmail,
   changeAccountPassword,
@@ -753,6 +754,7 @@ export function Sidebar() {
           return (
             <button
               key={item.id}
+              data-tour={item.id}
               onClick={() => router.push(item.path)}
               title={collapsed ? item.label : undefined}
               style={{
@@ -801,6 +803,8 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {!collapsed && <ProductTour />}
     </aside>
   );
 }

@@ -63,7 +63,7 @@ export function AiTutorPanel() {
   }
 
   return (
-    <div style={{
+    <div data-tour="ai-tutor" style={{
       background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
       marginBottom: 20, overflow: "hidden",
     }}>

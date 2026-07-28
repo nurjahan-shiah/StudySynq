@@ -283,12 +283,16 @@ export default function DashboardPage() {
           }}>
             <div style={{ minWidth: 0 }}>
               <SectionHeader title="Campus feed" />
-              <SocialFeed myGroups={groups} />
+              <div data-tour="social">
+                <SocialFeed myGroups={groups} />
+              </div>
             </div>
 
             <div>
               <SectionHeader title="Friends" />
-              <FriendsPanel />
+              <div data-tour="friends">
+                <FriendsPanel />
+              </div>
             </div>
           </div>
         </div>
