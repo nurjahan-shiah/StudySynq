@@ -117,18 +117,30 @@ const TOUR_STEPS: TourStep[] = [
 ];
 
 let driverInstance: ReturnType<typeof driver> | null = null;
+let stylesInjected = false;
+
+function injectTourStyles() {
+  if (stylesInjected || typeof document === 'undefined') return;
+  if (document.getElementById('studysynq-tour-styles')) {
+    stylesInjected = true;
+    return;
+  }
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'studysynq-tour-styles';
+  styleSheet.innerHTML = tourStyles;
+  document.head.appendChild(styleSheet);
+  stylesInjected = true;
+}
 
 export function ProductTour() {
   const [tourStarted, setTourStarted] = useState(false);
-  const [tourComplete, setTourComplete] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Initialize tour on component mount
+  // Initialize tour on component mount (client-only — avoids SSR/hydration mismatch)
   useEffect(() => {
-    // Check if user has dismissed the tour before
-    const tourDismissed = localStorage.getItem('studysynq_tour_dismissed');
-    if (tourDismissed && tourDismissed === 'true') {
-      setTourComplete(true);
-    }
+    injectTourStyles();
+    setMounted(true);
+
   }, []);
 
   const startTour = () => {
@@ -159,7 +171,6 @@ export function ProductTour() {
             driverInstance?.destroy();
             setTourStarted(false);
             localStorage.setItem('studysynq_tour_dismissed', 'true');
-            setTourComplete(true);
           },
         },
       })),
@@ -174,78 +185,14 @@ export function ProductTour() {
     }
     setTourStarted(false);
     localStorage.setItem('studysynq_tour_dismissed', 'true');
-    setTourComplete(true);
   };
 
-  const resetTour = () => {
-    localStorage.removeItem('studysynq_tour_dismissed');
-    setTourComplete(false);
-  };
-
-  // Only show button if tour hasn't been dismissed
-  if (tourComplete && !tourStarted) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          gap: '8px',
-          padding: '12px 16px',
-          borderTop: '1px solid var(--border)',
-          background: 'var(--bg2)',
-        }}
-      >
-        <button
-          onClick={startTour}
-          style={{
-            flex: 1,
-            padding: '8px 12px',
-            fontSize: '12px',
-            fontWeight: 500,
-            backgroundColor: 'var(--ss-blue)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#2563eb';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--ss-blue)';
-          }}
-        >
-          ▶ Start tour
-        </button>
-        <button
-          onClick={resetTour}
-          style={{
-            padding: '8px 12px',
-            fontSize: '12px',
-            backgroundColor: 'transparent',
-            color: 'var(--text2)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg3)';
-            e.currentTarget.style.color = 'var(--text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--text2)';
-          }}
-          title="Show tour again for new users"
-        >
-          🔄 Reset
-        </button>
-      </div>
-    );
+  // Guard against SSR/hydration mismatch — render nothing until client has mounted
+  if (!mounted) {
+    return null;
   }
 
-  // Show skip button during tour
+  // While the tour is running, show a floating Skip button
   if (tourStarted) {
     return (
       <div
@@ -283,7 +230,42 @@ export function ProductTour() {
     );
   }
 
-  return null;
+  // Default: always show the Start tour button in the sidebar
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: '8px',
+        padding: '12px 16px',
+        borderTop: '1px solid var(--border)',
+        background: 'var(--bg2)',
+      }}
+    >
+      <button
+        onClick={startTour}
+        style={{
+          flex: 1,
+          padding: '8px 12px',
+          fontSize: '12px',
+          fontWeight: 500,
+          backgroundColor: 'var(--ss-red)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          transition: 'background-color 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = '#dc2626';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'var(--ss-red)';
+        }}
+      >
+        ▶ Start tour
+      </button>
+    </div>
+  );
 }
 
 // Custom CSS for tour styling
@@ -348,12 +330,5 @@ const tourStyles = `
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3) !important;
   }
 `;
-
-// Inject styles on mount
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.innerHTML = tourStyles;
-  document.head.appendChild(styleSheet);
-}
 
 export default ProductTour;

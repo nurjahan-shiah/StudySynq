@@ -1,0 +1,142 @@
+time="2026-07-28T17:50:43-04:00" level=warning msg="C:\\Users\\nurja\\OneDrive\\Desktop\\su26\\project\\StudySynq\\docker-compose-microservices.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Image studysynq-recommendations-service Building 
+ Image studysynq-tasks-service Building 
+ Image studysynq-api-gateway Building 
+ Image studysynq-users-service Building 
+ Image studysynq-resources-service Building 
+ Image studysynq-auth-service Building 
+ Image studysynq-groups-service Building 
+ Image studysynq-announcements-service Building 
+ Image studysynq-notifications-service Building 
+ Image studysynq-admin-service Building 
+ Image studysynq-sessions-service Building 
+ Image studysynq-frontend Building 
+ Image studysynq-courses-service Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 7.81kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 517B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:20-alpine
+#3 ...
+
+#4 [auth] library/node:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:20-alpine
+#3 DONE 0.6s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 302B done
+#5 DONE 0.0s
+
+#6 [1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#6 resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 0.1s done
+#6 DONE 0.1s
+
+#7 [2/6] WORKDIR /app
+#7 CACHED
+
+#8 [internal] load build context
+#8 transferring context: 3.88kB 0.0s done
+#8 DONE 0.0s
+
+#9 [3/6] COPY package*.json ./
+#9 DONE 0.1s
+
+#10 [4/6] RUN npm install
+#10 29.93 
+#10 29.93 added 367 packages, and audited 368 packages in 29s
+#10 29.93 
+#10 29.93 146 packages are looking for funding
+#10 29.93   run `npm fund` for details
+#10 30.10 
+#10 30.10 5 high severity vulnerabilities
+#10 30.10 
+#10 30.10 To address issues that do not require attention, run:
+#10 30.10   npm audit fix
+#10 30.10 
+#10 30.10 To address all issues, run:
+#10 30.10   npm audit fix --force
+#10 30.10 
+#10 30.10 Run `npm audit` for details.
+#10 30.10 npm notice
+#10 30.10 npm notice New major version of npm available! 10.8.2 -> 12.0.1
+#10 30.10 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+#10 30.10 npm notice To update run: npm install -g npm@12.0.1
+#10 30.10 npm notice
+#10 DONE 31.7s
+
+#11 [5/6] COPY . .
+#11 DONE 0.5s
+
+#12 [6/6] RUN npm run build
+#12 0.603 
+#12 0.603 > frontend@0.1.0 build
+#12 0.603 > next build
+#12 0.603 
+#12 1.529 Attention: Next.js now collects completely anonymous telemetry regarding usage.
+#12 1.530 This information is used to shape Next.js' roadmap and prioritize features.
+#12 1.530 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+#12 1.530 https://nextjs.org/telemetry
+#12 1.530 
+#12 1.561 ▲ Next.js 16.2.6 (Turbopack)
+#12 1.561 
+#12 1.753   Creating an optimized production build ...
+#12 5.869 ✓ Compiled successfully in 3.6s
+#12 5.897   Running TypeScript ...
+#12 16.45   Finished TypeScript in 10.6s ...
+#12 16.46   Collecting page data using 15 workers ...
+#12 17.77   Generating static pages using 15 workers (0/19) ...
+#12 18.41   Generating static pages using 15 workers (4/19) 
+#12 18.82   Generating static pages using 15 workers (9/19) 
+#12 18.84   Generating static pages using 15 workers (14/19) 
+#12 18.97 ✓ Generating static pages using 15 workers (19/19) in 1201ms
+#12 18.98   Finalizing page optimization ...
+#12 19.00 
+#12 19.02 Route (app)
+#12 19.02 ┌ ○ /
+#12 19.02 ├ ○ /_not-found
+#12 19.02 ├ ○ /admin
+#12 19.02 ├ ○ /admin/analytics
+#12 19.02 ├ ○ /admin/health
+#12 19.02 ├ ○ /admin/moderation
+#12 19.02 ├ ○ /courses
+#12 19.02 ├ ○ /dashboard
+#12 19.02 ├ ○ /groups
+#12 19.02 ├ ƒ /groups/[id]
+#12 19.02 ├ ○ /login
+#12 19.02 ├ ○ /notifications
+#12 19.02 ├ ○ /notifications/preferences
+#12 19.02 ├ ○ /recommendations
+#12 19.02 ├ ○ /resources
+#12 19.02 ├ ○ /sessions
+#12 19.02 ├ ƒ /sessions/[id]
+#12 19.02 ├ ○ /signup
+#12 19.02 └ ○ /tasks
+#12 19.02 
+#12 19.02 
+#12 19.02 ○  (Static)   prerendered as static content
+#12 19.02 ƒ  (Dynamic)  server-rendered on demand
+#12 19.02 
+#12 DONE 19.3s
+
+#13 exporting to image
+#13 exporting layers
+#13 exporting layers 41.6s done
+#13 exporting manifest sha256:d2ac5e251b8c0bc76c679256f7bb57a175c1ef8b075a663cef743ded4b6f0a93 0.0s done
+#13 exporting config sha256:9f741b940efc74cbba6598ae240fdcc72bbd97fd8acc77f719f93465e036eb15 0.0s done
+#13 exporting attestation manifest sha256:d4ebf90f3138d5c5d977841b2fbe10dc44f41fa485caa8fad68cfd12380c3e3b 0.0s done
+#13 exporting manifest list sha256:c18090df17a9bddc5c35b603b8d67dcd680b2fea17f6ea5e8a89b657d30a43c3
+#13 exporting manifest list sha256:c18090df17a9bddc5c35b603b8d67dcd680b2fea17f6ea5e8a89b657d30a43c3 0.0s done
+#13 naming to docker.io/library/studysynq-frontend:latest done
+#13 unpacking to docker.io/library/studysynq-frontend:latest
+#13 unpacking to docker.io/library/studysynq-frontend:latest 16.9s done
+#13 DONE 58.7s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+ Image studysynq-frontend Built 
