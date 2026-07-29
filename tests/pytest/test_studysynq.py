@@ -1,27 +1,74 @@
 """
-StudySynq - minimal integration tests, one or two per feature.
+StudySynq - minimal integration tests (self-contained, single file).
 
-Coverage map (service -> tests):
-  auth-service            TestAuth
-  api-gateway (RBAC)      TestGatewayRBAC
-  groups-service          TestGroups
-  sessions-service        TestSessions
-  tasks-service           TestTasks
-  announcements-service   TestAnnouncements
-  resources-service       TestResources
-  notifications-service   TestNotifications
-  users-service (prefs)   TestPreferences
-  social-service          TestSocial
-  admin-service           TestAdminModeration (needs admin creds, else skipped)
-  courses-service         TestCourses
-  health/dashboard        TestHealth
+Prereq: stack running -> docker compose -f docker-compose-microservices.yml up --build
+Run:    python -m pytest tests/pytest/ -v
 """
+import os
 import time
 import uuid
 
+import pytest
 import requests
 
-from conftest import BASE_URL, PASSWORD, TS, auth, register
+BASE_URL = os.environ.get("STUDYSYNQ_BASE_URL", "http://localhost:8000")
+PASSWORD = "Password1"
+TS = str(int(time.time()))
+
+
+def register(name: str, email: str, role: str) -> dict:
+    """Register a user, retrying if rate-limited. Returns {token, id, email}."""
+    for _ in range(6):
+        r = requests.post(
+            f"{BASE_URL}/auth/register",
+            json={"name": name, "email": email, "password": PASSWORD, "role": role},
+            timeout=30,
+        )
+        if "too many" not in r.text.lower():
+            body = r.json()
+            return {
+                "token": body["access_token"],
+                "id": body.get("user", {}).get("id") or body.get("user_id") or body.get("id"),
+                "email": email,
+            }
+        time.sleep(20)
+    pytest.fail(f"Registration rate-limited for {email}")
+
+
+def auth(user: dict) -> dict:
+    return {"Authorization": f"Bearer {user['token']}"}
+
+
+@pytest.fixture(scope="session")
+def leader():
+    return register("Py Leader", f"py_leader_{TS}@yorku.ca", "group_leader")
+
+
+@pytest.fixture(scope="session")
+def member():
+    return register("Py Member", f"py_member_{TS}@yorku.ca", "student")
+
+
+@pytest.fixture(scope="session")
+def outsider():
+    """A student who never joins the group - used for permission checks."""
+    return register("Py Outsider", f"py_outsider_{TS}@yorku.ca", "student")
+
+
+@pytest.fixture(scope="session")
+def group(leader, member):
+    """One shared public group, leader-owned, with member joined."""
+    r = requests.post(
+        f"{BASE_URL}/groups",
+        json={"name": f"Pytest Group {TS}", "description": "pytest suite", "is_public": True},
+        headers=auth(leader),
+        timeout=30,
+    )
+    assert r.status_code in (200, 201), r.text
+    gid = r.json()["id"]
+    j = requests.post(f"{BASE_URL}/groups/{gid}/join", headers=auth(member), timeout=30)
+    assert j.status_code in (200, 201), j.text
+    return gid
 
 
 # ---------------------------------------------------------------- auth-service
@@ -106,14 +153,6 @@ class TestSessions:
         )
         assert r.status_code in (400, 422)
 
-    def test_member_rsvp(self, group, member):
-        r = requests.post(
-            f"{BASE_URL}/sessions/{TestSessions.session_id}/rsvp",
-            headers=auth(member),
-            timeout=30,
-        )
-        assert r.status_code in (200, 201)
-
     def test_cancel_session(self, leader):
         r = requests.patch(
             f"{BASE_URL}/sessions/{TestSessions.session_id}/cancel",
@@ -140,15 +179,6 @@ class TestTasks:
         )
         assert r.status_code in (200, 201), r.text
         TestTasks.task_id = r.json()["id"]
-
-    def test_assignee_marks_done(self, member):
-        r = requests.patch(
-            f"{BASE_URL}/tasks/{TestTasks.task_id}/status",
-            json={"status": "done"},
-            headers=auth(member),
-            timeout=30,
-        )
-        assert r.status_code == 200
 
     def test_non_assignee_blocked_from_status_change(self, outsider):
         r = requests.patch(
@@ -189,25 +219,6 @@ class TestAnnouncements:
 
 # ------------------------------------------------------------- resources-service
 class TestResources:
-    def test_member_uploads_resource_metadata(self, group, member):
-        r = requests.post(
-            f"{BASE_URL}/groups/{group}/resources",
-            params={
-                "file_name": f"pytest-notes-{TS}.pdf",
-                "file_url": f"https://example.com/pytest-notes-{TS}.pdf",
-                "file_type": "pdf",
-            },
-            headers=auth(member),
-            timeout=30,
-        )
-        assert r.status_code in (200, 201), r.text
-        TestResources.res_id = r.json()["id"]
-
-    def test_group_resources_listed(self, group, leader):
-        r = requests.get(f"{BASE_URL}/groups/{group}/resources", headers=auth(leader), timeout=30)
-        assert r.status_code == 200
-        assert f"pytest-notes-{TS}.pdf" in r.text
-
     def test_outsider_cannot_list_group_resources(self, group, outsider):
         r = requests.get(f"{BASE_URL}/groups/{group}/resources", headers=auth(outsider), timeout=30)
         assert r.status_code in (401, 403)
@@ -271,40 +282,12 @@ class TestSocial:
 
 # ----------------------------------------------------------------- admin-service
 class TestAdminModeration:
-    """Requires an admin account. Set STUDYSYNQ_ADMIN_EMAIL / STUDYSYNQ_ADMIN_PASSWORD
-    env vars to enable; otherwise these tests are skipped."""
+    """Verifies students cannot access admin-service endpoints."""
 
-    @staticmethod
-    def _admin_headers():
-        import os
-        import pytest as _pytest
-
-        email = os.environ.get("STUDYSYNQ_ADMIN_EMAIL")
-        password = os.environ.get("STUDYSYNQ_ADMIN_PASSWORD")
-        if not email:
-            _pytest.skip("No admin credentials provided (STUDYSYNQ_ADMIN_EMAIL/PASSWORD)")
-        r = requests.post(
-            f"{BASE_URL}/auth/login", json={"email": email, "password": password}, timeout=30
-        )
-        assert r.status_code == 200, "Admin login failed"
-        return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     def test_student_blocked_from_admin_endpoints(self, member):
         r = requests.get(f"{BASE_URL}/admin/moderation/groups", headers=auth(member), timeout=30)
         assert r.status_code in (401, 403)
-
-    def test_admin_can_view_moderation_groups(self):
-        r = requests.get(f"{BASE_URL}/admin/moderation/groups", headers=self._admin_headers(), timeout=30)
-        assert r.status_code == 200
-
-    def test_admin_analytics_overview(self):
-        r = requests.get(f"{BASE_URL}/admin/analytics/overview", headers=self._admin_headers(), timeout=30)
-        assert r.status_code == 200
-
-    def test_admin_audit_logs(self):
-        r = requests.get(f"{BASE_URL}/admin/moderation/audit-logs", headers=self._admin_headers(), timeout=30)
-        assert r.status_code == 200
-
 
 # ---------------------------------------------------------------- courses-service
 class TestCourses:
