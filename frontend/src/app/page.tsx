@@ -505,7 +505,7 @@ export default function Home() {
           fontSize: "clamp(1rem, 2vw, 1.2rem)", color: "var(--text2)",
           maxWidth: 580, lineHeight: 1.7, marginBottom: 40,
         }}>
-          StudySynq brings your classes, study groups, and resources into one seamless workspace —
+          StudySynq brings your classes, study groups, and resources into one seamless workspace -
           built for the way students actually learn.
         </p>
 

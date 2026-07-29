@@ -204,7 +204,7 @@ export function FriendsPanel() {
       ) : tab === "friends" ? (
         friends.length === 0 ? (
           <p style={{ fontSize: 12, color: T.text2, margin: 0 }}>
-            No friends yet — tap someone&apos;s name in the campus feed to add them.
+            No friends yet - tap someone&apos;s name in the campus feed to add them.
           </p>
         ) : (
           <div>
