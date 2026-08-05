@@ -14,7 +14,7 @@ StudySynq helps university students connect with classmates, organize study sess
 | Muhammad Fahad Sohail | fadi786@my.yorku.ca |
 | Saaram Ahmed Mustafa | ahmed779@my.yorku.ca |
 | Uzma Alam | uzmaa@my.yorku.ca |
-| Nusayba Hossain | @ |
+| Nusayba Hossain | nusaybah@my.yorku.ca |
 
 ---
 
